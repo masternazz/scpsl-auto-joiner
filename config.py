@@ -1,0 +1,45 @@
+"""Persisted settings for the auto-joiner: retry tuning + calibrated click
+points. See docs/superpowers/specs/2026-08-24-scpsl-autojoin-design.md."""
+import json
+import os
+
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+
+DEFAULTS = {
+    "retry_interval_s": 6,
+    "attempt_timeout_s": 20,
+    "max_unclear": 3,
+    "max_attempts": 100,
+    "max_minutes": 30,
+    "click_points": {
+        "play": [0, 0],
+        "servers_tab": [0, 0],
+        "internet_tab": [0, 0],
+        "direct_connect": [0, 0],
+        "ip_field": [0, 0],
+        "connect_button": [0, 0],
+    },
+}
+
+
+def load_config(path=None):
+    path = path or CONFIG_PATH
+    if not os.path.exists(path):
+        save_config(DEFAULTS, path)
+        return json.loads(json.dumps(DEFAULTS))  # deep copy
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    merged = dict(DEFAULTS)
+    merged.update(data)
+    merged["click_points"] = {**DEFAULTS["click_points"], **data.get("click_points", {})}
+    return merged
+
+
+def save_config(cfg, path=None):
+    path = path or CONFIG_PATH
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+
+
+def calibrated(cfg):
+    return all(tuple(v) != (0, 0) for v in cfg["click_points"].values())
