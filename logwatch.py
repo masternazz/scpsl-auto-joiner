@@ -1,0 +1,85 @@
+"""Tails Player.log and classifies join-attempt outcomes. No OCR, no screen
+reading — the game's own log tells us everything we need. Signatures verified
+live against the real client on 2026-08-24; see the design spec."""
+import os
+import re
+import time
+
+SUCCESS_MARK = "Scene Manager: Loaded scene 'Facility'"
+DELAY_MARK = "Connection has been delayed by"
+DISCONNECT_MARK = "OnPeerDisconnected"
+CANCEL_MARK = "Connection Failed"
+CONNECTING_MARK = "Connecting to"
+MENU_MARK = "Scene Manager: Loaded scene 'NewMainMenu'"
+CONNECTING_IP_RE = re.compile(r"Connection IP set to ([0-9.]+), port: (\d+)")
+
+DEFAULT_LOG_PATH = os.path.join(
+    os.environ.get("USERPROFILE", ""), "AppData", "LocalLow",
+    "Northwood", "SCPSL", "Player.log")
+
+
+def classify_log_text(text):
+    """Classify accumulated log text since a connect attempt started.
+    Returns "success", "rejected", "cancelled", "connecting", or None.
+    Checked in this order so a later success in the same buffer always wins
+    over an earlier rejection (a retry can succeed after prior failures)."""
+    if SUCCESS_MARK in text:
+        return "success"
+    if DELAY_MARK in text and DISCONNECT_MARK in text:
+        return "rejected"
+    if CANCEL_MARK in text:
+        return "cancelled"
+    if CONNECTING_MARK in text:
+        return "connecting"
+    return None
+
+
+class LogWatcher:
+    """Tails Player.log from the moment it's opened (not from the start of
+    the file) — each instance only sees lines written after it was created."""
+
+    def __init__(self, path=None):
+        self.path = path or DEFAULT_LOG_PATH
+        self._fh = open(self.path, "r", encoding="utf-8", errors="replace")
+        self._fh.seek(0, os.SEEK_END)
+
+    def read_new(self):
+        return self._fh.read()
+
+    def wait_for_outcome(self, timeout_s, poll_interval=0.25, stop_on_connecting=False):
+        """Accumulate new log text and classify it until a terminal outcome
+        (success/rejected/cancelled), a timeout, or — if stop_on_connecting —
+        the first sighting of "connecting" (used to confirm a click landed,
+        without waiting the full attempt timeout for a final result)."""
+        deadline = time.monotonic() + timeout_s
+        buf = ""
+        while time.monotonic() < deadline:
+            buf += self.read_new()
+            result = classify_log_text(buf)
+            if result in ("success", "rejected", "cancelled"):
+                return result
+            if result == "connecting" and stop_on_connecting:
+                return "connecting"
+            time.sleep(poll_interval)
+        buf += self.read_new()
+        return classify_log_text(buf) or "timeout"
+
+    def wait_for_regex(self, pattern, timeout_s, poll_interval=0.25):
+        """Wait for a compiled regex to appear in new log text. Returns the
+        match, or None on timeout."""
+        deadline = time.monotonic() + timeout_s
+        buf = ""
+        while time.monotonic() < deadline:
+            buf += self.read_new()
+            m = pattern.search(buf)
+            if m:
+                return m
+            time.sleep(poll_interval)
+        return None
+
+    def wait_for_marker(self, marker, timeout_s, poll_interval=0.25):
+        """Wait for a plain substring (e.g. MENU_MARK) to appear."""
+        return self.wait_for_regex(re.compile(re.escape(marker)), timeout_s, poll_interval) is not None
+
+    def close(self):
+        self._fh.close()
