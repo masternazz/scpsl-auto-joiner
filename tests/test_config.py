@@ -34,14 +34,29 @@ def test_calibrated_false_until_all_points_set(tmp_path):
 
 
 def test_load_config_no_shared_mutable_defaults(tmp_path):
-    """Verify that mutating a loaded config doesn't corrupt module DEFAULTS."""
+    """Verify that mutating a loaded config doesn't corrupt module DEFAULTS.
+
+    This test exercises the partial-merge path: save a config missing some
+    click_points keys, load it (which fills missing keys from DEFAULTS under
+    the buggy code), mutate one in place, and load again to verify DEFAULTS
+    wasn't corrupted.
+    """
     path = str(tmp_path / "config.json")
+    # Save a PARTIAL config (only "play" click_point, others are absent)
+    config_mod.save_config(
+        {"retry_interval_s": 9, "click_points": {"play": [12, 34]}}, path)
+
+    # Load it; under buggy code, missing keys like "servers_tab" come from DEFAULTS list objects
     cfg1 = config_mod.load_config(path)
-    # Mutate the loaded config's click_points in place
-    cfg1["click_points"]["ip_field"][0] = 999
-    # Load again from the same file
+    assert cfg1["click_points"]["servers_tab"] == [0, 0]
+
+    # Mutate a missing-from-save key in place (this would corrupt DEFAULTS under buggy code)
+    cfg1["click_points"]["servers_tab"][0] = 999
+    assert cfg1["click_points"]["servers_tab"] == [999, 0]
+
+    # Load again from the same partial file
     cfg2 = config_mod.load_config(path)
-    # The fresh config should still have the default [0, 0] (not the mutated [999, 0])
-    assert cfg2["click_points"]["ip_field"] == [0, 0]
-    # And DEFAULTS itself should never be mutated
-    assert config_mod.DEFAULTS["click_points"]["ip_field"] == [0, 0]
+    # Fresh config must still have default [0, 0], not the mutated [999, 0]
+    assert cfg2["click_points"]["servers_tab"] == [0, 0]
+    # And module DEFAULTS itself must never be mutated
+    assert config_mod.DEFAULTS["click_points"]["servers_tab"] == [0, 0]
