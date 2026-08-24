@@ -23,6 +23,15 @@ _CLICK_MOVE_DWELL = 0.15  # let a hover-highlight settle before the click lands
 _KEYEVENTF_KEYUP = 0x0002
 
 
+def get_cursor_pos():
+    class _POINT(ctypes.Structure):
+        _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+    point = _POINT()
+    if ctypes.windll.user32.GetCursorPos(ctypes.byref(point)):
+        return point.x, point.y
+    return None
+
+
 def set_dpi_awareness():
     """Per-Monitor-v2 DPI awareness. Call once at startup so click
     coordinates captured during calibration match physical pixels at run
