@@ -17,10 +17,14 @@ name, it resolves the server, repeatedly attempts to join, and notifies you
 
 ## Ground truth (verified live against the real client, 2026-08-24)
 
-- Server identity: `https://api.scpslgame.com/lobbylist.php?format=json`
-  (no API key needed for a basic read). Refreshes ~30s server-side, is **not**
-  reliable for capacity ("24/25" can already be full) — used only to resolve a
-  typed name to an IP:port, never to gate whether to attempt a join.
+- Server identity: **not** resolved via `api.scpslgame.com/lobbylist.php` —
+  that endpoint is Cloudflare-protected (403 to any non-browser client, even
+  from a residential IP) and the underlying data needs an API key requested
+  from Northwood directly (per `support.scpslgame.com/article/63`). Not worth
+  chasing for a personal tool. Instead: a local `servers.json` (name → ip,
+  port), populated by a "remember this server" flow — see Resolver below. Live
+  player counts were already known to be unreliable for gating anyway (see
+  next point), so nothing about the retry logic depended on a live API.
 - `Player.log` (`%USERPROFILE%\AppData\LocalLow\Northwood\SCPSL\Player.log`)
   gives a clean, immediate outcome for every join attempt:
 
@@ -58,23 +62,32 @@ name, it resolves the server, repeatedly attempts to join, and notifies you
 ## Architecture
 
 ```
-config.json ──┐
-              ▼
-  [resolver] ──(name, fuzzy match)──► lobbylist.php ──► ip, port
-              │
-              ▼
+servers.json ──┐
+               ▼
+  [resolver] ──(name, fuzzy match)──► ip, port
+               │
+               ▼
   [gui] ──(server name typed)──► [driver loop] ◄──tail──[log watcher]
-              ▲                        │
-              │                        ▼
-        [toast notifier] ◄── success / gave-up / ambiguous
+    │         ▲                        │
+    │         │                        ▼
+    └─"remember this server"──►  [toast notifier] ◄── success / gave-up / ambiguous
 ```
 
-1. **GUI** (tkinter — stdlib): one text field (server name) + Join button +
-   status line. Blocking network/automation work runs on a background thread
-   so the window stays responsive.
-2. **Resolver** (`resolver.py`): fetch `lobbylist.php`, `difflib.get_close_matches`
-   the typed name against the returned server names (stdlib only), return
-   `(name, ip, port)` of the best match.
+1. **GUI** (tkinter — stdlib): a text field (server name) + Join button +
+   status line, plus a "Remember a server" button. Blocking network/automation
+   work runs on a background thread so the window stays responsive.
+2. **Resolver** (`resolver.py`): loads `servers.json` (a flat
+   `{"name": {"ip": ..., "port": ...}}` map next to `config.json`),
+   `difflib.get_close_matches` the typed name against its keys (stdlib only),
+   returns `(name, ip, port)` of the best match, or `None` if nothing is close
+   enough.
+
+   **Populating it** — "Remember a server": you click Play on a server
+   yourself in the normal in-game browser, like always; the tool (log watcher
+   already running) sees the resulting `Connecting to <ip>!` line, and the GUI
+   prompts "What should I call this server?" — the name you type is saved to
+   `servers.json` alongside that IP/port. One ordinary click, ever, per server
+   you want to auto-join later; no file editing, no API, no key.
 3. **Input driver** (`winput.py`): adapted from FAFE's `capture.py` — just the
    pieces needed: DPI awareness (`SetProcessDpiAwarenessContext`, from Halo's
    `common.py` pattern), `find_game_window("SCP: Secret Laboratory")`, and
@@ -148,8 +161,8 @@ config.json ──┐
   tells you to run calibration first.
 - A click never registers twice in a row (see fallback above) → stop, notify,
   don't spin forever clicking nothing.
-- Server name matches nothing in the API response → GUI shows "no server
-  found," doesn't start.
+- Server name matches nothing in `servers.json` (or it's empty) → GUI shows
+  "no server found — use Remember a server first," doesn't start.
 - Any unexpected exception in the driver loop → caught, logged to a local
   file, surfaced as a toast ("auto-joiner crashed, check log") rather than
   dying silently.
