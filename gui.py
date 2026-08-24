@@ -11,6 +11,7 @@ import resolver
 class App:
     def __init__(self, root):
         self.root = root
+        self._busy = False
         root.title("SCP:SL Auto-Joiner")
 
         tk.Label(root, text="Server name:").grid(row=0, column=0, padx=8, pady=8, sticky="w")
@@ -30,27 +31,38 @@ class App:
 
     def on_join(self):
         name = self.name_var.get().strip()
-        if name:
+        if name and not self._busy:
+            self._busy = True
             threading.Thread(target=self._run_join, args=(name,), daemon=True).start()
 
     def _run_join(self, name):
-        joiner.run(name, on_status=self.set_status)
+        try:
+            joiner.run(name, on_status=self.set_status)
+        finally:
+            self._busy = False
 
     def on_remember(self):
-        threading.Thread(target=self._run_remember, daemon=True).start()
+        if not self._busy:
+            self._busy = True
+            threading.Thread(target=self._run_remember, daemon=True).start()
 
     def _run_remember(self):
-        self.set_status("Click Play on the server you want to remember, in the game...")
-        watcher = logwatch.LogWatcher()
         try:
-            match = watcher.wait_for_regex(logwatch.CONNECTING_IP_RE, 120)
-        finally:
-            watcher.close()
-        if match:
-            ip, port = match.group(1), int(match.group(2))
-            self.root.after(0, lambda: self._prompt_and_save(ip, port))
-        else:
-            self.set_status("Timed out waiting for a connection attempt.")
+            self.set_status("Click Play on the server you want to remember, in the game...")
+            watcher = logwatch.LogWatcher()
+            try:
+                match = watcher.wait_for_regex(logwatch.CONNECTING_IP_RE, 120)
+            finally:
+                watcher.close()
+            if match:
+                ip, port = match.group(1), int(match.group(2))
+                self.root.after(0, lambda: self._prompt_and_save(ip, port))
+            else:
+                self.set_status("Timed out waiting for a connection attempt.")
+                self._busy = False
+        except Exception:
+            self.set_status("Could not watch the SCP:SL log.")
+            self._busy = False
 
     def _prompt_and_save(self, ip, port):
         name = simpledialog.askstring(
@@ -61,6 +73,7 @@ class App:
             self.status_var.set(f"Saved '{name}' -> {ip}:{port}")
         else:
             self.status_var.set("Cancelled.")
+        self._busy = False
 
 
 def main():

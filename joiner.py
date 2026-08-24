@@ -2,6 +2,7 @@
 Direct Connect, then retry until the log says success/give-up/unclear."""
 import os
 import time
+import traceback
 
 import config as config_mod
 import logwatch
@@ -13,6 +14,7 @@ GAME_TITLE = "SCP: Secret Laboratory"
 STEAM_URI = "steam://rungameid/700330"
 MENU_CLICK_ORDER = ["play", "servers_tab", "internet_tab", "direct_connect"]
 APP_NAME = "SCP:SL Auto-Joiner"
+ERROR_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "autojoiner.log")
 
 
 class JoinError(Exception):
@@ -70,28 +72,33 @@ def run(server_name, on_status=None):
         if on_status:
             on_status(msg)
 
-    cfg = config_mod.load_config()
-    if not config_mod.calibrated(cfg):
-        notify.notify(APP_NAME, "Run calibration first (calibrate.py).")
-        return "not_calibrated"
-
-    match = resolver.resolve(server_name)
-    if match is None:
-        notify.notify(APP_NAME, f"No saved server matches '{server_name}'. Use Remember a server first.")
-        return "not_found"
-    name, ip, port = match
-
-    watcher = logwatch.LogWatcher()
+    watcher = None
     try:
+        cfg = config_mod.load_config()
+        if not config_mod.calibrated(cfg):
+            notify.notify(APP_NAME, "Run calibration first (calibrate.py).")
+            return "not_calibrated"
+
+        match = resolver.resolve(server_name)
+        if match is None:
+            notify.notify(APP_NAME, f"No saved server matches '{server_name}'. Use Remember a server first.")
+            return "not_found"
+        name, ip, port = match
+
+        watcher = logwatch.LogWatcher()
         status("Making sure SCP:SL is running...")
+        already_running = bool(winput.find_game_window(GAME_TITLE))
         try:
             hwnd = ensure_game_running(watcher)
         except JoinError as e:
             notify.notify(APP_NAME, str(e))
             return "launch_failed"
 
-        status("Navigating to Direct Connect...")
-        navigate_to_direct_connect(hwnd, cfg)
+        if already_running:
+            status("Using the existing SCP:SL window at Direct Connect...")
+        else:
+            status("Navigating to Direct Connect...")
+            navigate_to_direct_connect(hwnd, cfg)
 
         unclear = 0
         attempts = 0
@@ -124,5 +131,11 @@ def run(server_name, on_status=None):
 
         notify.notify(APP_NAME, f"Gave up trying to join {name}.")
         return "gave_up"
+    except Exception:
+        with open(ERROR_LOG_PATH, "a", encoding="utf-8") as log:
+            traceback.print_exc(file=log)
+        notify.notify(APP_NAME, "Auto-joiner crashed; check autojoiner.log.")
+        return "unclear"
     finally:
-        watcher.close()
+        if watcher is not None:
+            watcher.close()
