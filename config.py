@@ -1,5 +1,6 @@
 """Persisted settings for the auto-joiner: retry tuning + calibrated click
 points. See docs/superpowers/specs/2026-08-24-scpsl-autojoin-design.md."""
+import copy
 import json
 import os
 
@@ -26,12 +27,17 @@ def load_config(path=None):
     path = path or CONFIG_PATH
     if not os.path.exists(path):
         save_config(DEFAULTS, path)
-        return json.loads(json.dumps(DEFAULTS))  # deep copy
+        return copy.deepcopy(DEFAULTS)
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
-    merged = dict(DEFAULTS)
-    merged.update(data)
-    merged["click_points"] = {**DEFAULTS["click_points"], **data.get("click_points", {})}
+    merged = copy.deepcopy(DEFAULTS)
+    # Update top-level keys except click_points (which needs dict merging)
+    for key, value in data.items():
+        if key != "click_points":
+            merged[key] = value
+    # Merge saved click_points into the deepcopied defaults
+    if "click_points" in data:
+        merged["click_points"].update(data["click_points"])
     return merged
 
 
