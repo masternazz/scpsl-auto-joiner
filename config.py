@@ -4,7 +4,9 @@ import copy
 import json
 import os
 
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+from app_paths import app_dir
+
+CONFIG_PATH = os.path.join(app_dir(), "config.json")
 
 DEFAULTS = {
     "retry_interval_s": 6,

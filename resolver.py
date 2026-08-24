@@ -6,7 +6,9 @@ import difflib
 import json
 import os
 
-SERVERS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "servers.json")
+from app_paths import app_dir
+
+SERVERS_PATH = os.path.join(app_dir(), "servers.json")
 
 
 def load_servers(path=None):

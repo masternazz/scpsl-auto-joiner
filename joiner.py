@@ -9,12 +9,13 @@ import logwatch
 import notify
 import resolver
 import winput
+from app_paths import app_dir
 
 GAME_TITLE = "SCP: Secret Laboratory"
 STEAM_URI = "steam://rungameid/700330"
 MENU_CLICK_ORDER = ["play", "servers_tab", "internet_tab", "direct_connect"]
 APP_NAME = "SCP:SL Auto-Joiner"
-ERROR_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "autojoiner.log")
+ERROR_LOG_PATH = os.path.join(app_dir(), "autojoiner.log")
 
 
 class JoinError(Exception):
