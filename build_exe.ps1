@@ -1,6 +1,9 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
+if (Test-Path dist) { Remove-Item dist -Recurse -Force }
+if (Test-Path build) { Remove-Item build -Recurse -Force }
+
 python -m pip install --upgrade pyinstaller
 python -m PyInstaller --noconfirm --clean --onedir --windowed `
   --name "SCP-SL-Auto-Joiner" --icon assets\app.ico `
