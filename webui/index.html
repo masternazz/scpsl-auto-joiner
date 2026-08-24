@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SCP:SL Auto-Joiner</title><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">SCP</div><div class="brand-name">AUTO-JOINER</div><div class="brand-line"></div></div>
+    <nav><button class="nav active" data-view="join"><span>◈</span> Auto-Join</button><button class="nav" data-view="setup"><span>⌖</span> Calibration</button><button class="nav" data-view="help"><span>?</span> How it works</button></nav>
+    <div class="side-bottom"><div class="side-note">BACKGROUND QUEUE<br><b>PLAYER.LOG LINK</b></div><div class="version">SCP:SL AUTO-JOINER</div></div>
+  </aside>
+  <main class="main">
+    <section class="view" id="view-join">
+      <header class="hero"><div><div class="kicker">CONTAINMENT OPERATIONS · READY</div><h1>Auto-Join</h1><div class="underline"></div><p>Keep trying until a slot opens. The joiner drives Direct Connect and reads SCP:SL's own log for the result.</p></div><div class="hero-status"><span class="status-dot"></span><span id="topState">READY</span></div></header>
+      <section class="card loop"><div class="eyebrow">THE LOOP</div><div class="steps"><span class="done">01 Resolve</span><i>→</i><span>02 Navigate</span><i>→</i><span>03 Connect</span><i>→</i><span>04 Retry</span></div></section>
+      <section class="card panel open"><button class="panel-head" onclick="togglePanel(this)"><span><small>DESTINATION</small><b>Choose a server</b></span><em>▾</em></button><div class="panel-body"><label>SERVER NAME <span>saved locally on this computer</span></label><div class="select-row"><input id="server" list="servers" placeholder="Start typing a saved server…"><datalist id="servers"></datalist><button class="primary" onclick="startJoin()">▶ Start auto-join</button></div><div class="hint">Use “Remember server” after manually joining once. The app will detect and save its address automatically.</div><div class="actions"><button class="secondary" onclick="beginRemember()">＋ Remember a server</button><button class="secondary" onclick="openView('setup')">⌖ Calibrate this computer</button></div></div></section>
+      <section class="card activity"><div class="activity-head"><span><small>LIVE FEED</small><b>Activity</b></span><span class="pill" id="feedState">IDLE</span></div><div id="log" class="log"><div class="log-line muted">Waiting for a run.</div></div></section>
+    </section>
+    <section class="view hidden" id="view-setup"><header class="hero compact"><div><div class="kicker">FIRST-RUN SETUP</div><h1>Calibrate</h1><div class="underline"></div><p>Every computer and monitor is different. Capture each game control once so background clicks land correctly.</p></div></header><section class="card panel open"><div class="panel-body"><div class="cal-head"><div><small>CALIBRATION PROGRESS</small><b id="calTitle">Step 1 of 6 · Play button</b></div><span id="calCount">0 / 6</span></div><div class="cal-bar"><i id="calBar"></i></div><p id="calText">Open SCP:SL to the main menu, move your mouse over the Play button, then capture its position.</p><button class="primary wide" onclick="capturePoint()">Capture current mouse position</button><button class="text-button" onclick="openView('join')">Back to Auto-Join</button></div></section><section class="card info"><b>Why is this needed?</b><p>The joiner uses your saved screen coordinates instead of OCR or screen scraping. Re-run calibration if you move, resize, or change the display scale of SCP:SL.</p></section></section>
+    <section class="view hidden" id="view-help"><header class="hero compact"><div><div class="kicker">FIELD MANUAL</div><h1>How it works</h1><div class="underline"></div><p>A plain-language guide to every button and what the automation is doing.</p></div></header><section class="help-grid"><article class="card info"><span class="number">01</span><b>Calibrate once</b><p>Capture the six SCP:SL controls from the setup page. This is stored per computer, not online.</p></article><article class="card info"><span class="number">02</span><b>Remember a server</b><p>Start the watcher, join a server normally, and give the detected IP and port a friendly name.</p></article><article class="card info"><span class="number">03</span><b>Start the queue</b><p>Pick a saved name. The app opens the game, enters Direct Connect, and retries rejected attempts.</p></article><article class="card info"><span class="number">04</span><b>What it does not do</b><p>No memory reading, packet manipulation, OCR, or anti-cheat bypass. It sends normal Windows input and reads Player.log.</p></article></section></section>
+  </main>
+</div>
+<div id="toast" class="toast"></div>
+<script src="app.js"></script>
+</body></html>
