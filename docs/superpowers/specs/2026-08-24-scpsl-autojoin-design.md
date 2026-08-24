@@ -38,8 +38,22 @@ name, it resolves the server, repeatedly attempts to join, and notifies you
   click Direct Connect's Connect button again. No re-navigation needed.
 - Direct Connect (Servers → Internet → Direct Connect) is a small static
   dialog with a fixed IP:port field — not the scrolling server list. Coordinates
-  for it are stable for a given window size/position, so they're captured once
-  via a manual calibration step rather than located via OCR each time.
+  for it, and for the menu buttons leading to it, are stable for a given window
+  size/position, so they're captured once via a manual calibration step rather
+  than located via OCR each time.
+
+## Scope decisions
+
+- **Fully automatic**: the tool launches SCP:SL itself if it isn't already
+  running (`os.startfile("steam://rungameid/700330")` — stdlib, no dependency)
+  and clicks through Play → Servers → Internet → Direct Connect on its own.
+  Calibration therefore records a *sequence* of named click points, not just
+  the two Direct Connect fields — see Calibration below.
+- **Background clicking**: input is sent via `PostMessage` (not `SendInput`),
+  so it doesn't steal window focus and you can keep using other windows while
+  it retries — same technique your Forza project (`capture.py`) already uses
+  for menu clicks there. Unverified against SCP:SL specifically until built;
+  see the fallback in the Driver loop below.
 
 ## Architecture
 
@@ -63,26 +77,38 @@ config.json ──┐
    `(name, ip, port)` of the best match.
 3. **Input driver** (`winput.py`): adapted from FAFE's `capture.py` — just the
    pieces needed: DPI awareness (`SetProcessDpiAwarenessContext`, from Halo's
-   `common.py` pattern), `find_game_window("SCP: Secret Laboratory")`,
-   `focus_window`, SendInput-based `mouse_click`, SendInput-based key tap
-   (Enter / Esc / typed characters for the IP:port field). Pure `ctypes`, no
-   new dependency.
+   `common.py` pattern), `find_game_window("SCP: Secret Laboratory")`, and
+   PostMessage-based `post_click` / `post_key` (background, focus-preserving —
+   FAFE's proven pattern) for both mouse clicks and key taps (Enter / Esc /
+   typed IP:port characters). Also keeps `focus_window` + SendInput
+   `mouse_click`/key-tap as a fallback path (see Driver loop). Pure `ctypes`,
+   no new dependency.
 4. **Calibration** (`calibrate.py`, run once per machine/resolution): walks you
-   through opening Direct Connect yourself, then you click the IP field and the
-   Connect button while the tool is watching the cursor; it saves those two
-   physical-pixel coordinates to `config.json`. Re-run any time the window
-   moves/resizes.
+   through a named sequence of click points — Play, Servers tab, Internet tab,
+   Direct Connect, the IP field, the Connect button — prompting you to click
+   each once while the tool watches the cursor; saves them as physical-pixel
+   coordinates to `config.json`, keyed by name. Re-run any time the window
+   moves/resizes or the menu layout changes.
 5. **Log watcher** (`logwatch.py`): opens `Player.log`, seeks to end, then on
-   each attempt reads new lines and classifies them against the three
-   signatures above, with a timeout (default 20s) if none appear.
+   each attempt reads new lines and classifies them against the three outcome
+   signatures above, plus `Connecting to` (used only to confirm a click
+   actually registered — see fallback below), with a timeout (default 20s) if
+   nothing relevant appears.
 6. **Driver loop** (`joiner.py`): the orchestration —
-   - type the resolved `ip:port` into the calibrated field, click Connect
-     (or just click Connect again if the field already holds it from a
-     previous attempt)
-   - wait on the log watcher
+   - if the game isn't running, launch it and wait (via the log watcher, for
+     `Scene Manager: Loaded scene 'NewMainMenu'`) before doing anything else
+   - click the calibrated menu sequence to Direct Connect (first run only;
+     skipped once already there), type the resolved `ip:port`, click Connect
+   - **click-registration fallback**: if `Connecting to` doesn't show up
+     within ~5s of a click, the PostMessage click didn't register — retry
+     that one click via `focus_window` + SendInput instead (briefly stealing
+     focus), then continue. Two failures in a row on the same click → stop,
+     notify "clicks aren't registering, re-run calibration."
+   - wait on the log watcher for an outcome
    - **Success** → toast "Joined <name>", stop.
    - **Rejected** → press Esc (dismiss overlay), sleep `retry_interval`
-     (default 6s, comfortably above the ~5s server cooldown), loop.
+     (default 6s, comfortably above the ~5s server cooldown), click Connect
+     again (IP:port field already holds the value), loop.
    - **Timeout / cancelled / anything unrecognized** → count as one "unclear"
      attempt; after `max_unclear` in a row (default 3), stop and notify with a
      toast telling you to check the game yourself — this is the "something
@@ -101,19 +127,27 @@ config.json ──┐
   "max_unclear": 3,
   "max_attempts": 100,
   "max_minutes": 30,
-  "direct_connect_ip_field": [0, 0],
-  "direct_connect_connect_button": [0, 0]
+  "click_points": {
+    "play": [0, 0],
+    "servers_tab": [0, 0],
+    "internet_tab": [0, 0],
+    "direct_connect": [0, 0],
+    "ip_field": [0, 0],
+    "connect_button": [0, 0]
+  }
 }
 ```
 
-The two coordinate fields are `[0, 0]` until `calibrate.py` has been run once.
+`click_points` stays all-zero until `calibrate.py` has been run once.
 
 ## Error handling
 
-- Game window not found (not running) → GUI shows an error, doesn't start the
-  loop.
-- Calibration coordinates still `[0, 0]` → GUI refuses to start, tells you to
-  run calibration first.
+- Game not running and can't be launched → GUI shows an error, doesn't start
+  the loop.
+- Calibration not yet run (`click_points` all zero) → GUI refuses to start,
+  tells you to run calibration first.
+- A click never registers twice in a row (see fallback above) → stop, notify,
+  don't spin forever clicking nothing.
 - Server name matches nothing in the API response → GUI shows "no server
   found," doesn't start.
 - Any unexpected exception in the driver loop → caught, logged to a local
