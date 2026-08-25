@@ -131,7 +131,9 @@ def main():
     startup_trace("starting webview")
     try:
         webview.start(
+            gui="edgechromium",
             debug=not getattr(sys, "frozen", False),
+            http_server=True,
             private_mode=False,
             storage_path=os.path.join(app_dir(), "webview"),
         )
