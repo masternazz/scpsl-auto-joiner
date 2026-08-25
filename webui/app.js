@@ -18,7 +18,7 @@ function setFeed(text) { $('feedState').textContent = text; }
 function setRunning(running) { $('startButton').disabled = running; $('stopButton').hidden = !running; $('headerBadge').classList.toggle('running', running); $('headerBadge').querySelector('span').textContent = running ? 'Running' : 'Ready'; setFeed(running ? 'RUNNING' : 'IDLE'); if (!running) $('topState').textContent = state.calibrated ? 'CALIBRATED' : 'SETUP REQUIRED'; }
 function backendStatus(text, running) { if (text) log(text); if (running !== undefined) setRunning(running); }
 function backendFinished(result) { setRunning(false); log(`Finished: ${result}`); toast(result === 'success' ? 'Joined successfully.' : `Run finished: ${result}.`); }
-function serverDetected(ip, port) { detected = { ip, port }; $('dialogAddress').textContent = `${ip}:${port}`; $('serverName').value = ''; $('dialog').hidden = false; $('serverName').focus(); }
+async function serverDetected(ip, port) { const name = `${ip}:${port}`; if (!api()) return; state = await api().save_server(name, ip, port); render(); $('server').value = name; toast(`Saved server ${name}.`); log(`Detected and saved ${name}.`); }
 function closeDialog() { detected = null; $('dialog').hidden = true; }
 async function saveDetectedServer() { const name = $('serverName').value.trim(); if (!name || !detected || !api()) return toast('Enter a name first.'); state = await api().save_server(name, detected.ip, detected.port); closeDialog(); render(); $('server').value = name; toast('Server saved.'); }
 window.status = backendStatus; window.finished = backendFinished; window.backendStatus = backendStatus; window.backendFinished = backendFinished;

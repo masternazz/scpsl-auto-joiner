@@ -154,7 +154,7 @@ class App:
             self.root.after(0, lambda: self.set_busy(False))
 
     def save_server(self, ip, port):
-        name = simpledialog.askstring("Save server", f"What should I call this server?\n\nDetected: {ip}:{port}", parent=self.root)
+        name = f"{ip}:{port}"
         if name and name.strip():
             resolver.remember_server(name.strip(), ip, port)
             self.server_var.set(name.strip())
