@@ -6,7 +6,9 @@ ROOT = Path(__file__).resolve().parents[2]
 FRAMES = ROOT / "assets" / "generated" / "auto-join-demo-frames"
 FRAMES.mkdir(exist_ok=True)
 
-W, H = 960, 540
+BASE_W, BASE_H = 960, 540
+SCALE = 2
+W, H = BASE_W * SCALE, BASE_H * SCALE
 BG = "#0c0910"
 PANEL = "#17111f"
 CARD = "#21182d"
@@ -20,7 +22,40 @@ GREEN = "#68d391"
 
 def font(size, bold=False):
     name = "segoeuib.ttf" if bold else "segoeui.ttf"
-    return ImageFont.truetype(str(Path("C:/Windows/Fonts") / name), size)
+    return ImageFont.truetype(str(Path("C:/Windows/Fonts") / name), size * SCALE)
+
+
+class Canvas:
+    """Draw at logical coordinates while preserving native 1080p output."""
+
+    def __init__(self, draw):
+        self._draw = draw
+
+    @staticmethod
+    def coords(values):
+        return tuple(round(value * SCALE) for value in values)
+
+    def line(self, coords, **kwargs):
+        kwargs["width"] = kwargs.get("width", 1) * SCALE
+        self._draw.line(self.coords(coords), **kwargs)
+
+    def rectangle(self, coords, **kwargs):
+        self._draw.rectangle(self.coords(coords), **kwargs)
+
+    def rounded_rectangle(self, coords, **kwargs):
+        kwargs["radius"] = kwargs.get("radius", 0) * SCALE
+        kwargs["width"] = kwargs.get("width", 1) * SCALE
+        self._draw.rounded_rectangle(self.coords(coords), **kwargs)
+
+    def ellipse(self, coords, **kwargs):
+        kwargs["width"] = kwargs.get("width", 1) * SCALE
+        self._draw.ellipse(self.coords(coords), **kwargs)
+
+    def text(self, coords, text, **kwargs):
+        self._draw.text(self.coords(coords), text, **kwargs)
+
+    def textbbox(self, coords, text, **kwargs):
+        return self._draw.textbbox(self.coords(coords), text, **kwargs)
 
 
 def ease(value):
@@ -32,7 +67,7 @@ def fit_text(draw, text, max_width, start_size, bold=False):
     size = start_size
     while size > 10:
         f = font(size, bold)
-        if draw.textbbox((0, 0), text, font=f)[2] <= max_width:
+        if draw.textbbox((0, 0), text, font=f)[2] <= max_width * SCALE:
             return f
         size -= 1
     return font(10, bold)
@@ -41,13 +76,13 @@ def fit_text(draw, text, max_width, start_size, bold=False):
 def render(index, total):
     t = index / (total - 1)
     image = Image.new("RGB", (W, H), BG)
-    draw = ImageDraw.Draw(image)
+    draw = Canvas(ImageDraw.Draw(image))
 
-    for x in range(40, W, 80):
-        draw.line((x, 0, x, H), fill="#130e19", width=1)
-    for y in range(40, H, 80):
-        draw.line((0, y, W, y), fill="#130e19", width=1)
-    draw.rectangle((0, 0, 7, H), fill=PURPLE)
+    for x in range(40, BASE_W, 80):
+        draw.line((x, 0, x, BASE_H), fill="#130e19", width=1)
+    for y in range(40, BASE_H, 80):
+        draw.line((0, y, BASE_W, y), fill="#130e19", width=1)
+    draw.rectangle((0, 0, 7, BASE_H), fill=PURPLE)
 
     draw.text((48, 36), "SCP:SL", font=font(22, True), fill=WHITE)
     draw.text((49, 66), "AUTO-JOINER", font=font(11, True), fill=PURPLE)
