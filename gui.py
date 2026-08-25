@@ -85,7 +85,6 @@ class App:
         ttk.Label(right, text="Every computer gets its own calibration because monitor scaling and window positions differ.", style="Body.TLabel", wraplength=205).pack(anchor="w", pady=(7, 16))
         self.calibration = tk.StringVar()
         tk.Label(right, textvariable=self.calibration, bg=PANEL, fg=AMBER, font=("Segoe UI", 10, "bold"), wraplength=205, justify="left").pack(anchor="w", pady=(0, 14))
-        ttk.Button(right, text="Calibrate this computer", style="Secondary.TButton", command=self.calibrate).pack(fill="x", pady=4)
         ttk.Button(right, text="How it works", style="Secondary.TButton", command=self.help).pack(fill="x", pady=4)
         ttk.Button(right, text="Open data folder", style="Secondary.TButton", command=self.open_folder).pack(fill="x", pady=4)
         ttk.Separator(right).pack(fill="x", pady=22)
@@ -96,7 +95,7 @@ class App:
         self.servers = resolver.load_servers()
         self.server_box["values"] = sorted(self.servers)
         ok = config_mod.calibrated(config_mod.load_config())
-        self.calibration.set("Calibration saved for this computer" if ok else "Calibration needed before joining")
+        self.calibration.set("Automatic control detection enabled")
 
     def filter_servers(self, _event=None):
         q = self.server_var.get().lower()

@@ -13,9 +13,18 @@ from app_paths import app_dir
 
 GAME_TITLE = "SCP: Secret Laboratory"
 STEAM_URI = "steam://rungameid/700330"
-MENU_CLICK_ORDER = ["play", "servers_tab", "internet_tab", "direct_connect"]
 APP_NAME = "SCP:SL Auto-Joiner"
 ERROR_LOG_PATH = os.path.join(app_dir(), "autojoiner.log")
+
+# Normalized centers from the SCP:SL fullscreen/borderless layout. Keeping
+# these relative to the game window makes resolution and monitor position
+# irrelevant; tune this table if the game changes its menu layout.
+LAYOUT_POINTS = {
+    "servers": (0.12, 0.05),
+    "direct_connect": (0.49, 0.18),
+    "address_field": (0.59, 0.51),
+    "connect": (0.63, 0.58),
+}
 
 
 class JoinError(Exception):
@@ -49,20 +58,40 @@ def click_with_fallback(hwnd, point, watcher, confirm_marker, confirm_timeout=5)
     return watcher.wait_for_marker(confirm_marker, confirm_timeout)
 
 
-def navigate_to_direct_connect(hwnd, cfg):
-    points = cfg["click_points"]
-    for name in MENU_CLICK_ORDER:
-        winput.post_click(hwnd, *points[name])
-        time.sleep(0.5)
+def layout_point(hwnd, name):
+    rect = winput.get_window_rect(hwnd)
+    if not rect:
+        raise JoinError("Could not read the SCP:SL window size.")
+    left, top, right, bottom = rect
+    x_ratio, y_ratio = LAYOUT_POINTS[name]
+    return int(left + (right - left) * x_ratio), int(top + (bottom - top) * y_ratio)
+
+
+def click_layout(hwnd, name):
+    point = layout_point(hwnd, name)
+    winput.focus_window(hwnd)
+    winput.mouse_click(*point)
+    return point
+
+
+def navigate_to_direct_connect(hwnd, _cfg):
+    """Navigate using coordinates relative to the current game window."""
+    click_layout(hwnd, "servers")
+    time.sleep(0.8)
+    click_layout(hwnd, "direct_connect")
+    time.sleep(0.8)
 
 
 def attempt_join(hwnd, cfg, ip, port, watcher):
-    points = cfg["click_points"]
-    winput.post_click(hwnd, *points["ip_field"])
+    navigate_to_direct_connect(hwnd, cfg)
+    field = layout_point(hwnd, "address_field")
+    winput.focus_window(hwnd)
+    winput.mouse_click(*field)
     winput.post_text(hwnd, f"{ip}:{port}")
-    if not click_with_fallback(hwnd, points["connect_button"], watcher,
-                                confirm_marker=logwatch.CONNECTING_MARK):
-        raise JoinError("Clicks aren't registering. Re-run calibration.")
+    connect = layout_point(hwnd, "connect")
+    winput.mouse_click(*connect)
+    if not watcher.wait_for_marker(logwatch.CONNECTING_MARK, 5):
+        raise JoinError("SCP:SL did not start connecting. Check the game layout.")
     return watcher.wait_for_outcome(cfg["attempt_timeout_s"])
 
 
@@ -76,10 +105,6 @@ def run(server_name, on_status=None, stop_event=None):
     watcher = None
     try:
         cfg = config_mod.load_config()
-        if not config_mod.calibrated(cfg):
-            notify.notify(APP_NAME, "Run calibration first (calibrate.py).")
-            return "not_calibrated"
-
         match = resolver.resolve(server_name)
         if match is None:
             notify.notify(APP_NAME, f"No saved server matches '{server_name}'. Use Remember a server first.")
@@ -95,11 +120,8 @@ def run(server_name, on_status=None, stop_event=None):
             notify.notify(APP_NAME, str(e))
             return "launch_failed"
 
-        if already_running:
-            status("Using the existing SCP:SL window at Direct Connect...")
-        else:
-            status("Navigating to Direct Connect...")
-            navigate_to_direct_connect(hwnd, cfg)
+        status("Finding SCP:SL controls automatically...")
+        navigate_to_direct_connect(hwnd, cfg)
 
         unclear = 0
         attempts = 0

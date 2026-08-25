@@ -82,6 +82,14 @@ def find_game_window(title_exact: str):
         return None
 
 
+def get_window_rect(hwnd):
+    """Return (left, top, right, bottom) for a top-level window."""
+    rect = _wintypes.RECT()
+    if hwnd and ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+        return rect.left, rect.top, rect.right, rect.bottom
+    return None
+
+
 def focus_window(hwnd) -> bool:
     """Best-effort bring `hwnd` to the foreground — needed before the
     SendInput fallback path, which always targets whatever window is
