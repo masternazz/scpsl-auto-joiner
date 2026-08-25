@@ -8,7 +8,7 @@ import joiner
 
 class FakeWatcher:
     def __init__(self):
-        self.outcomes = iter(("rejected", "success"))
+        self.outcomes = iter(("rejected_or_unknown", "success"))
 
     def wait_for_marker(self, marker, _timeout, stop_event=None):
         assert marker == joiner.logwatch.CONNECTING_MARK
@@ -32,7 +32,7 @@ def test_cold_automatic_connection_launches_game_with_connect_argument(monkeypat
 
     result = joiner.connect_once(None, cfg, watcher, "1.2.3.4", 7778, launch_direct=True)
 
-    assert result == "rejected"
+    assert result == "rejected_or_unknown"
     assert launches == [("1.2.3.4", 7778)]
 
 
@@ -179,7 +179,7 @@ def test_stop_during_retry_delay_prevents_another_click(monkeypatch):
 
     class RejectingWatcher(FakeWatcher):
         def wait_for_outcome(self, _timeout, stop_event=None):
-            return "rejected"
+            return "rejected_or_unknown"
 
     class StopDuringDelay:
         def __init__(self):
@@ -238,7 +238,40 @@ def test_rejected_server_reports_reason_and_two_second_retry(monkeypatch):
 
     assert joiner.run("Canada #3", on_status=statuses.append) == "success"
     assert 2 in sleeps
-    assert "Server full or connection rejected. Retrying in 2 seconds..." in statuses
+    assert "Server rejected/full-or-unknown. Retrying in 2 seconds..." in statuses
+
+
+def test_disconnected_outcome_retries_without_claiming_server_is_full(monkeypatch):
+    statuses = []
+    cfg = {
+        "navigation_mode": "automatic",
+        "click_points": {},
+        "attempt_timeout_s": 20,
+        "retry_interval_s": 0,
+        "max_unclear": 1,
+        "max_attempts": 2,
+        "max_minutes": 5,
+    }
+
+    class DisconnectedWatcher(FakeWatcher):
+        def __init__(self):
+            self.outcomes = iter(("disconnected", "success"))
+
+    monkeypatch.setattr(joiner.config_mod, "load_config", lambda: cfg)
+    monkeypatch.setattr(joiner.resolver, "resolve", lambda _name: ("Canada #4", "1.2.3.4", 7780))
+    monkeypatch.setattr(joiner.logwatch, "LogWatcher", DisconnectedWatcher)
+    monkeypatch.setattr(joiner.winput, "find_game_window", lambda _title: 123)
+    monkeypatch.setattr(joiner.winput, "get_window_rect", lambda _hwnd: (0, 0, 1000, 1000))
+    monkeypatch.setattr(joiner.winput, "focus_window", lambda _hwnd: (_ for _ in ()).throw(AssertionError("must not steal focus")))
+    monkeypatch.setattr(joiner.winput, "mouse_click", lambda *_args: (_ for _ in ()).throw(AssertionError("must not move the cursor")))
+    monkeypatch.setattr(joiner.winput, "post_click", lambda *_args: None)
+    monkeypatch.setattr(joiner.winput, "replace_text", lambda *_args: None)
+    monkeypatch.setattr(joiner.winput, "post_key_tap", lambda *_args: None)
+    monkeypatch.setattr(joiner.winput, "foreground_key_tap", lambda *_args: None)
+    monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
+
+    assert joiner.run("Canada #4", on_status=statuses.append) == "success"
+    assert "Server rejected/full-or-unknown. Retrying in 0 seconds..." in statuses
 
 
 def test_zero_attempts_and_runtime_run_until_stopped(monkeypatch):

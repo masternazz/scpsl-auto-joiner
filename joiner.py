@@ -302,7 +302,7 @@ def run(server_name, on_status=None, stop_event=None):
                 status("Stop requested.")
                 return "stopped"
 
-            if outcome in ("rejected", "cancelled"):
+            if outcome in ("rejected", "cancelled", "rejected_or_unknown", "disconnected"):
                 unclear = 0
                 if hwnd is None:
                     hwnd = wait_for_game_window(stop_event=stop_event)
@@ -312,7 +312,7 @@ def run(server_name, on_status=None, stop_event=None):
                 dismiss_connection_overlay(hwnd)
                 delay = cfg["retry_interval_s"]
                 unit = "second" if delay == 1 else "seconds"
-                status(f"Server full or connection rejected. Retrying in {delay} {unit}...")
+                status(f"Server rejected/full-or-unknown. Retrying in {delay} {unit}...")
                 if stop_event:
                     if stop_event.wait(delay):
                         status("Stop requested.")
