@@ -1,8 +1,11 @@
 """Orchestrates one auto-join run: launch the game if needed, navigate to
 Direct Connect, then retry until the log says success/give-up/unclear."""
 import os
+import re
+import subprocess
 import time
 import traceback
+import winreg
 
 import config as config_mod
 import logwatch
@@ -13,7 +16,6 @@ from app_paths import app_dir
 
 GAME_TITLE = "SCP: Secret Laboratory"
 STEAM_URI = "steam://rungameid/700330"
-STEAM_CONNECT_URI = "steam://connect/{host}:{port}"
 APP_NAME = "SCP:SL Auto-Joiner"
 ERROR_LOG_PATH = os.path.join(app_dir(), "autojoiner.log")
 
@@ -30,6 +32,83 @@ LAYOUT_POINTS = {
 
 class JoinError(Exception):
     """Setup failure the caller should show and stop on."""
+
+
+def steam_root():
+    """Return Steam's install directory from the current user's registry."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as key:
+            return os.path.normpath(winreg.QueryValueEx(key, "SteamPath")[0])
+    except OSError:
+        return None
+
+
+def steam_libraries(root=None):
+    """Return every Steam library without depending on Steam's UI."""
+    root = root or steam_root()
+    if not root:
+        return []
+    libraries = [os.path.normpath(root)]
+    vdf = os.path.join(root, "steamapps", "libraryfolders.vdf")
+    try:
+        with open(vdf, "r", encoding="utf-8", errors="replace") as handle:
+            text = handle.read()
+        for value in re.findall(r'"path"\s+"([^"]+)"', text, re.IGNORECASE):
+            path = os.path.normpath(value.replace(r"\\", "\\"))
+            if path not in libraries:
+                libraries.append(path)
+    except OSError:
+        pass
+    return libraries
+
+
+def find_game_executable(root=None):
+    """Locate SCPSL.exe from Steam's library metadata."""
+    for library in steam_libraries(root):
+        steamapps = os.path.join(library, "steamapps")
+        manifest = os.path.join(steamapps, "appmanifest_700330.acf")
+        install_dir = "SCP Secret Laboratory"
+        try:
+            with open(manifest, "r", encoding="utf-8", errors="replace") as handle:
+                match = re.search(r'"installdir"\s+"([^"]+)"', handle.read(), re.IGNORECASE)
+            if match:
+                install_dir = match.group(1).replace(r"\\", "\\")
+        except OSError:
+            pass
+        executable = os.path.join(steamapps, "common", install_dir, "SCPSL.exe")
+        if os.path.isfile(executable):
+            return executable
+    return None
+
+
+def launch_game_connected(ip, port):
+    """Launch SCP:SL directly with Steam auth and Northwood's +connect arg.
+
+    Steam's ``steam://connect`` URL opens a Game Info window, while passing
+    custom arguments through ``steam://run`` triggers a Steam confirmation.
+    Launching the installed game with the exact ``-steam`` argument Steam
+    normally uses avoids both dialogs; the live client still authenticates
+    through Steam and honors ``+connect``.
+    """
+    executable = find_game_executable()
+    if not executable:
+        raise JoinError("Could not find SCP:SL in your Steam libraries.")
+    subprocess.Popen(
+        [executable, "-steam", "+connect", f"{ip}:{port}"],
+        cwd=os.path.dirname(executable),
+    )
+
+
+def wait_for_game_window(timeout=15, stop_event=None):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if stop_event and stop_event.is_set():
+            return None
+        hwnd = winput.find_game_window(GAME_TITLE)
+        if hwnd:
+            return hwnd
+        time.sleep(0.25)
+    return None
 
 
 def ensure_game_running(watcher, launch_timeout=90, stop_event=None):
@@ -87,21 +166,27 @@ def prepare_direct_connect(hwnd, ip, port, open_servers=True):
     winput.replace_text(hwnd, f"{ip}:{port}")
 
 
-def connect_once(hwnd, cfg, watcher, ip, port, open_servers=True, stop_event=None):
+def connect_once(hwnd, cfg, watcher, ip, port, open_servers=True,
+                 launch_direct=False, stop_event=None):
     """Start one connection without global input, then read its result.
 
-    Automatic mode uses Northwood's supported Steam Direct Connect URI.
-    Manual mode remains a calibrated, targeted-window fallback.
+    A cold automatic start uses the game's supported ``+connect`` argument.
+    Warm starts and retries post controls only to SCP:SL's window. Manual mode
+    uses calibrated positions; automatic mode uses resolution-relative ones.
     """
-    if cfg.get("navigation_mode", "automatic") == "automatic":
-        os.startfile(STEAM_CONNECT_URI.format(host=ip, port=port))
+    if launch_direct:
+        launch_game_connected(ip, port)
+        marker_timeout = 90
     else:
         prepare_direct_connect(hwnd, ip, port, open_servers=open_servers)
         click_layout(hwnd, "connect")
-    if not watcher.wait_for_marker(logwatch.CONNECTING_MARK, 5, stop_event=stop_event):
+        marker_timeout = 5
+    if not watcher.wait_for_marker(logwatch.CONNECTING_MARK, marker_timeout, stop_event=stop_event):
         if stop_event and stop_event.is_set():
             return "stopped"
-        raise JoinError("SCP:SL did not start connecting. Try the calibrated window-message fallback in Settings.")
+        if launch_direct:
+            raise JoinError("SCP:SL launched but did not start the direct connection.")
+        raise JoinError("SCP:SL did not start connecting. Calibrate the four controls in Settings.")
     return watcher.wait_for_outcome(cfg["attempt_timeout_s"], stop_event=stop_event)
 
 
@@ -122,14 +207,19 @@ def run(server_name, on_status=None, stop_event=None):
         name, ip, port = match
 
         watcher = logwatch.LogWatcher()
-        status("Making sure SCP:SL is running...")
-        try:
-            hwnd = ensure_game_running(watcher, stop_event=stop_event)
-        except JoinError as e:
-            if stop_event and stop_event.is_set():
-                return "stopped"
-            notify.notify(APP_NAME, str(e))
-            return "launch_failed"
+        hwnd = winput.find_game_window(GAME_TITLE)
+        cold_direct = not hwnd
+        if cold_direct:
+            status(f"Launching SCP:SL and connecting to {name}...")
+        else:
+            status("Making sure SCP:SL is running...")
+            try:
+                hwnd = ensure_game_running(watcher, stop_event=stop_event)
+            except JoinError as e:
+                if stop_event and stop_event.is_set():
+                    return "stopped"
+                notify.notify(APP_NAME, str(e))
+                return "launch_failed"
 
         unclear = 0
         attempts = 0
@@ -146,12 +236,11 @@ def run(server_name, on_status=None, stop_event=None):
             attempts += 1
             status(f"Attempt {attempts}: connecting to {name} ({ip}:{port})...")
             try:
-                # Steam Direct Connect needs no UI state. The calibrated
-                # fallback returns to Servers after a rejection, so only its
-                # first attempt needs to leave News.
                 outcome = connect_once(
                     hwnd, cfg, watcher, ip, port,
-                    open_servers=(attempts == 1), stop_event=stop_event,
+                    open_servers=(attempts == 1 and not cold_direct),
+                    launch_direct=(attempts == 1 and cold_direct),
+                    stop_event=stop_event,
                 )
             except JoinError as e:
                 notify.notify(APP_NAME, str(e))
@@ -171,6 +260,11 @@ def run(server_name, on_status=None, stop_event=None):
 
             if outcome in ("rejected", "cancelled"):
                 unclear = 0
+                if hwnd is None:
+                    hwnd = wait_for_game_window(stop_event=stop_event)
+                    if hwnd is None:
+                        notify.notify(APP_NAME, "SCP:SL is running, but its window could not be found for the retry.")
+                        return "unclear"
                 delay = cfg["retry_interval_s"]
                 unit = "second" if delay == 1 else "seconds"
                 status(f"Server full or connection rejected. Retrying in {delay} {unit}...")

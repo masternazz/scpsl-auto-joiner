@@ -199,16 +199,16 @@ class HelpDialog(QDialog):
         text = QTextEdit()
         text.setReadOnly(True)
         text.setPlainText(
-            "1. Steam Direct Connect\n\n"
-            "By default, the app sends Northwood's supported Direct Connect URI through Steam. It does not click or type, and needs no calibration.\n\n"
+            "1. Automatic direct start\n\n"
+            "If SCP:SL is closed, the app launches the installed game with Steam authentication and the saved server endpoint. This avoids Steam's Game Info and custom-argument popups.\n\n"
             "2. Optional calibration\n\n"
-            "If automatic navigation misses a control, use Calibrate controls. Start once, hover each requested game control, and press F8. The on-screen guide advances through all four steps automatically. F9 cancels.\n\n"
+            "Retries use resolution-scaled controls sent only to the SCP:SL window. If one misses, use Calibrate controls. Hover each requested game control and press F8; F9 cancels.\n\n"
             "3. Remember a server\n\n"
             "Join normally and click Remember a server. The app reads the IP and port from Player.log and saves the endpoint.\n\n"
             "4. Start auto-join\n\n"
-            "Choose the saved server. The app launches SCP:SL if needed, opens Direct Connect, enters the endpoint, and retries rejected joins.\n\n"
+            "Choose the saved server. The app launches and connects directly, then retries rejected joins from the server screen.\n\n"
             "5. Safety\n\n"
-            "It does not read memory, use OCR, modify packets, or bypass anti-cheat. It sends normal Windows input and watches Player.log."
+            "It does not read memory, use OCR, modify packets, or bypass anti-cheat. It uses normal launch arguments, targeted window messages, and Player.log."
         )
         layout.addWidget(text)
 
@@ -311,7 +311,7 @@ class MainWindow(QMainWindow):
 
     def join_page(self):
         content, layout = self.page_content()
-        self.heading(layout, "CONTAINMENT OPERATIONS  /  READY", "Auto-Join", "Keep trying until a slot opens. Steam Direct Connect leaves your mouse and keyboard free.")
+        self.heading(layout, "CONTAINMENT OPERATIONS  /  READY", "Auto-Join", "Keep trying until a slot opens. Your physical mouse and keyboard stay free.")
         destination, box = self.card()
         box.addWidget(label("DESTINATION", "eyebrow"))
         box.addWidget(label("Choose a saved server", "section"))
@@ -374,7 +374,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(destination)
         activity, activity_box = self.card()
         row = QHBoxLayout(); row.addWidget(label("LIVE FEED", "eyebrow")); row.addStretch(); self.feed = label("IDLE", "pill"); row.addWidget(self.feed); activity_box.addLayout(row)
-        self.status = label("Ready. Steam Direct Connect is enabled; no mouse or keyboard input is used.", "status")
+        self.status = label("Ready. Automatic direct start and background retries are enabled.", "status")
         activity_box.addWidget(self.status)
         self.progress = QProgressBar(); self.progress.setRange(0, 0); self.progress.hide(); activity_box.addWidget(self.progress)
         layout.addWidget(activity)
@@ -383,16 +383,16 @@ class MainWindow(QMainWindow):
 
     def setup_page(self):
         content, layout = self.page_content()
-        self.heading(layout, "OPTIONAL FALLBACK  /  LOCAL", "Calibration", "Steam Direct Connect needs no calibration. Capture four controls only for the window-message fallback.")
+        self.heading(layout, "OPTIONAL PRECISION  /  LOCAL", "Calibration", "Automatic scaling works across resolutions. Capture four controls only if a background retry misses.")
         card, box = self.card()
         box.addWidget(label("CONTROL SETUP", "eyebrow"))
         box.addWidget(label("Calibrate this computer", "section"))
         box.addWidget(label("Start one guided session, hover Servers, Direct Connect, the IP/Hostname field, and Connect in order, and press F8 for each. The guide advances automatically; F9 cancels.", "body"))
-        row = QHBoxLayout(); self.calibration_status = label("Steam Direct Connect enabled — no calibration needed.", "warning"); row.addWidget(self.calibration_status); row.addStretch(); box.addLayout(row)
+        row = QHBoxLayout(); self.calibration_status = label("Automatic scaling enabled — calibration usually is not needed.", "warning"); row.addWidget(self.calibration_status); row.addStretch(); box.addLayout(row)
         button = QPushButton("Open calibration")
         button.setProperty("kind", "primary"); button.clicked.connect(self.calibrate); box.addWidget(button)
         layout.addWidget(card)
-        info, info_box = self.card(); info_box.addWidget(label("WHY THIS EXISTS", "eyebrow")); info_box.addWidget(label("Two connection modes", "section")); info_box.addWidget(label("Steam Direct Connect is the input-free default. The calibrated window-message mode is an optional fallback if Steam cannot deliver a retry on this computer.", "body")); layout.addWidget(info); layout.addStretch()
+        info, info_box = self.card(); info_box.addWidget(label("WHY THIS EXISTS", "eyebrow")); info_box.addWidget(label("Two positioning modes", "section")); info_box.addWidget(label("Automatic mode scales control positions to the current SCP:SL window. Calibrated mode stores exact positions for unusual layouts. Both keep your physical cursor and keyboard untouched.", "body")); layout.addWidget(info); layout.addStretch()
         return self.scroll_page(content)
 
     def settings_page(self):
@@ -401,11 +401,11 @@ class MainWindow(QMainWindow):
 
         controls, box = self.card()
         box.addWidget(label("NAVIGATION", "eyebrow"))
-        box.addWidget(label("Control mode", "section"))
-        box.addWidget(label("Steam Direct Connect uses no simulated input. The fallback posts controls only to SCP:SL and uses four calibrated positions.", "body"))
+        box.addWidget(label("Retry positioning", "section"))
+        box.addWidget(label("Cold starts connect directly. Later retries post controls only to SCP:SL, using either resolution-scaled or calibrated positions.", "body"))
         self.navigation_mode = QComboBox()
-        self.navigation_mode.addItem("Steam Direct Connect — no input (recommended)", "automatic")
-        self.navigation_mode.addItem("Window-message fallback — calibrated", "manual")
+        self.navigation_mode.addItem("Automatic scaling — any resolution (recommended)", "automatic")
+        self.navigation_mode.addItem("Use saved calibration — exact positions", "manual")
         self.navigation_mode.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.navigation_mode.setMinimumContentsLength(12)
         self.navigation_mode.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
@@ -470,7 +470,7 @@ class MainWindow(QMainWindow):
         actions_box.addWidget(label("APPLY", "eyebrow"))
         self.save_settings_button = QPushButton("Save settings"); self.save_settings_button.setProperty("kind", "primary")
         self.save_settings_button.clicked.connect(self.save_settings)
-        self.automatic_button = QPushButton("Use Steam Direct Connect"); self.automatic_button.clicked.connect(self.use_automatic_controls)
+        self.automatic_button = QPushButton("Use automatic scaling"); self.automatic_button.clicked.connect(self.use_automatic_controls)
         self.settings_calibration_button = QPushButton("Open calibration"); self.settings_calibration_button.clicked.connect(self.calibrate)
         actions_box.addWidget(self.save_settings_button)
         actions_box.addWidget(self.automatic_button)
@@ -483,12 +483,13 @@ class MainWindow(QMainWindow):
         content, layout = self.page_content()
         self.heading(layout, "FIELD MANUAL  /  REFERENCE", "How it works", "A plain-language guide to every button and what the automation is doing.")
         for number, title, text in [
-            ("01", "No-input connection", "The default sends SCP:SL's supported Direct Connect URI through Steam. It does not simulate mouse clicks or keyboard entry."),
-            ("02", "Optional calibration", "Start once, hover each requested control, and press F8. A click-through guide advances through all four controls automatically; F9 cancels."),
-            ("03", "Remember a server", "Start the watcher and join normally. Player.log supplies the endpoint, then the app asks the server directly for its public name and pre-fills the popup."),
-            ("04", "Reliable join detection", "Joined and rejected states come from SCP:SL's own Player.log. This is more reliable than OCR across 4K scaling, animations, and UI changes."),
-            ("05", "Unlimited mode", "Set Maximum attempts or Maximum runtime to 0 to disable that limit. Set both to 0 to retry until joined or manually stopped."),
-            ("06", "What it does not do", "No memory reading, packet manipulation, OCR, or anti-cheat bypass. It uses Steam Direct Connect and reads Player.log."),
+            ("01", "Hands-off direct start", "With SCP:SL closed, the app starts the installed game with Steam authentication and the saved +connect endpoint. No Steam Game Info dialog is used."),
+            ("02", "Background retries", "If a server rejects the attempt, controls are posted only to the SCP:SL window. Your physical mouse, keyboard, and foreground app stay untouched."),
+            ("03", "Optional calibration", "Automatic positions scale to the game window. If one misses on an unusual layout, hover each requested control and press F8; F9 cancels."),
+            ("04", "Remember a server", "Start the watcher and join normally. Player.log supplies the endpoint, then the app asks the server directly for its public name and pre-fills the popup."),
+            ("05", "Reliable join detection", "Joined and rejected states come from SCP:SL's own Player.log. This is more reliable than OCR across 4K scaling, animations, and UI changes."),
+            ("06", "Unlimited mode", "Set Maximum attempts or Maximum runtime to 0 to disable that limit. Set both to 0 to retry until joined or manually stopped."),
+            ("07", "What it does not do", "No memory reading, packet manipulation, OCR, or anti-cheat bypass. It uses normal launch arguments, targeted window messages, and Player.log."),
         ]:
             card, box = self.card(); box.addWidget(label(number, "number")); box.addWidget(label(title, "section")); box.addWidget(label(text, "body")); layout.addWidget(card)
         layout.addStretch()
@@ -511,7 +512,7 @@ class MainWindow(QMainWindow):
         self.update_endpoint_preview(self.server_box.currentText())
         cfg = config_mod.load_config(); manual = cfg.get("navigation_mode") == "manual" and config_mod.calibrated(cfg)
         legacy = cfg.get("navigation_mode") == "manual" and not config_mod.calibrated(cfg)
-        text = "Window-message fallback saved and active." if manual else ("Old DPI-scaled calibration disabled — calibrate once again." if legacy else "Steam Direct Connect enabled — no calibration needed.")
+        text = "Saved calibration is active for retries." if manual else ("Old DPI-scaled calibration disabled — calibrate once again." if legacy else "Automatic scaling enabled — calibration usually is not needed.")
         self.calibration_status.setText(text)
         self.load_settings_form(cfg)
 
@@ -530,7 +531,7 @@ class MainWindow(QMainWindow):
         if cfg.get("navigation_mode") == "manual" and not config_mod.calibrated(cfg):
             self.settings_feedback.setText("Your previous DPI-scaled calibration is disabled. Run calibration once to capture correct 4K physical pixels.")
         else:
-            self.settings_feedback.setText("Window-message fallback is active." if mode == "manual" else "Steam Direct Connect is active; no simulated input is used.")
+            self.settings_feedback.setText("Saved calibration is active for retries." if mode == "manual" else "Automatic scaling is active; your physical input stays free.")
 
     def save_settings(self):
         cfg = config_mod.load_config()
@@ -549,15 +550,15 @@ class MainWindow(QMainWindow):
             self.settings_feedback.setText("Settings saved. Auto-join will run until joined or stopped.")
         else:
             self.settings_feedback.setText("Settings saved.")
-        self.calibration_status.setText("Window-message fallback saved and active." if cfg["navigation_mode"] == "manual" else "Steam Direct Connect enabled — no calibration needed.")
+        self.calibration_status.setText("Saved calibration is active for retries." if cfg["navigation_mode"] == "manual" else "Automatic scaling enabled — calibration usually is not needed.")
 
     def use_automatic_controls(self):
         cfg = config_mod.load_config()
         cfg["navigation_mode"] = "automatic"
         config_mod.save_config(cfg)
         self.load_settings_form(cfg)
-        self.calibration_status.setText("Steam Direct Connect enabled — no calibration needed.")
-        self.settings_feedback.setText("Steam Direct Connect enabled and saved. No simulated input will be used.")
+        self.calibration_status.setText("Automatic scaling enabled — calibration usually is not needed.")
+        self.settings_feedback.setText("Automatic scaling enabled and saved. Your physical input stays free.")
 
     def show_server_suggestions(self, query):
         self.server_completer.setCompletionPrefix(query)
