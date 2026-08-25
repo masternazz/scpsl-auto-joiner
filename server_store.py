@@ -50,6 +50,9 @@ def _migrate(data):
         }
         for index, server in enumerate(store["servers"]):
             store["servers"][index] = _validate_server_record(server)
+        available = {server["id"] for server in store["servers"]}
+        for index, group in enumerate(store["groups"]):
+            store["groups"][index] = _validate_group_record(group, available)
         return store
     if not isinstance(data, dict):
         raise ValueError("store must be an object")
@@ -71,6 +74,25 @@ def _validate_server_record(server):
     ip, port = _validate_endpoint(server.get("ip"), server.get("port"))
     normalized = dict(server)
     normalized.update({"id": server["id"].strip(), "name": server["name"].strip(), "ip": ip, "port": port})
+    return normalized
+
+
+def _validate_group_record(group, available):
+    if not isinstance(group, dict):
+        raise ValueError("invalid group record")
+    if not isinstance(group.get("id"), str) or not group["id"].strip():
+        raise ValueError("invalid group ID")
+    if not isinstance(group.get("name"), str) or not group["name"].strip():
+        raise ValueError("invalid group name")
+    server_ids = group.get("server_ids")
+    if not isinstance(server_ids, list) or not all(isinstance(item, str) and item for item in server_ids):
+        raise ValueError("invalid group server IDs")
+    if len(server_ids) != len(set(server_ids)):
+        raise ValueError("duplicate server IDs")
+    if any(item not in available for item in server_ids):
+        raise ValueError("unknown server ID")
+    normalized = dict(group)
+    normalized.update({"id": group["id"].strip(), "name": group["name"].strip(), "server_ids": list(server_ids)})
     return normalized
 
 
@@ -132,13 +154,11 @@ def delete_server(server_id, path=None):
 
 
 def _group(name, server_ids, store, group_id=None):
-    ids = list(server_ids)
-    if len(ids) != len(set(ids)):
-        raise ValueError("duplicate server IDs")
     available = {server["id"] for server in store["servers"]}
-    if any(item not in available for item in ids):
-        raise ValueError("unknown server ID")
-    return {"id": group_id or str(uuid.uuid4()), "name": name.strip(), "server_ids": ids}
+    return _validate_group_record(
+        {"id": group_id or str(uuid.uuid4()), "name": name, "server_ids": list(server_ids)},
+        available,
+    )
 
 
 def create_group(name, server_ids, path=None):

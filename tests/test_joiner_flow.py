@@ -1,6 +1,10 @@
 import os
 import sys
 import threading
+from dataclasses import FrozenInstanceError
+from types import SimpleNamespace
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -365,3 +369,170 @@ def test_zero_attempts_and_runtime_run_until_stopped(monkeypatch):
 
     assert joiner.run("Canada #3", stop_event=stop) == "stopped"
     assert attempts == ["attempt", "attempt"]
+
+
+def _configure_group_run(monkeypatch, targets, outcomes, *, max_attempts=0, max_unclear=1):
+    """Replace only the external single-attempt boundary for group tests."""
+    calls = []
+    cfg = {
+        "navigation_mode": "automatic",
+        "attempt_timeout_s": 1,
+        "retry_interval_s": 0,
+        "max_unclear": max_unclear,
+        "max_attempts": max_attempts,
+        "max_minutes": 0,
+    }
+    group = {"id": "group-1", "name": "Raid Night", "server_ids": [item["id"] for item in targets]}
+    monkeypatch.setattr(joiner.config_mod, "load_config", lambda: cfg)
+    monkeypatch.setattr(joiner, "resolve_target", lambda target_type, target_id: list(targets), raising=False)
+    monkeypatch.setattr(joiner, "server_store", SimpleNamespace(load_store=lambda: {"groups": [group]}), raising=False)
+    monkeypatch.setattr(joiner.winput, "set_dpi_awareness", lambda: None)
+    monkeypatch.setattr(joiner.winput, "find_game_window", lambda _title: 123)
+    monkeypatch.setattr(joiner.logwatch, "LogWatcher", FakeWatcher)
+    monkeypatch.setattr(joiner.transport, "choose_method", lambda *_args, **_kwargs: "background")
+    monkeypatch.setattr(joiner, "dismiss_connection_overlay", lambda _hwnd: None)
+    monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
+
+    def attempt(_hwnd, _cfg, _watcher, ip, _port, **_kwargs):
+        calls.append(ip)
+        return next(outcomes)
+
+    monkeypatch.setattr(joiner, "connect_once", attempt)
+    return calls
+
+
+def test_resolve_target_keeps_group_server_order_and_progress_is_immutable(monkeypatch):
+    first = {"id": "one", "name": "First", "ip": "1.1.1.1", "port": 7777}
+    second = {"id": "two", "name": "Second", "ip": "2.2.2.2", "port": 7778}
+    monkeypatch.setattr(
+        joiner, "server_store",
+        SimpleNamespace(load_store=lambda: {
+            "servers": [first, second],
+            "groups": [{"id": "group-1", "name": "Ordered", "server_ids": [second["id"], first["id"]]}],
+        }),
+        raising=False,
+    )
+
+    assert [item["id"] for item in joiner.resolve_target("group", "group-1")] == ["two", "one"]
+    assert joiner.resolve_target("server", "one") == [first]
+    progress = joiner.GroupProgress("group-1", "one", 0, 2, 1, "connecting")
+    with pytest.raises(FrozenInstanceError):
+        progress.attempt = 2
+
+
+def test_run_group_stops_after_one_server_succeeds(monkeypatch):
+    targets = [{"id": "one", "name": "Alpha", "ip": "1.1.1.1", "port": 7777}]
+    calls = _configure_group_run(monkeypatch, targets, iter(("success",)))
+    statuses = []
+
+    assert joiner.run_group("group-1", on_status=statuses.append) == "success"
+    assert calls == ["1.1.1.1"]
+    assert any("Raid Night: server 1 of 1 (Alpha), attempt 1" in item for item in statuses)
+
+
+def test_run_group_advances_after_rejection_in_saved_order(monkeypatch):
+    targets = [
+        {"id": "one", "name": "Alpha", "ip": "1.1.1.1", "port": 7777},
+        {"id": "two", "name": "Bravo", "ip": "2.2.2.2", "port": 7778},
+    ]
+    calls = _configure_group_run(monkeypatch, targets, iter(("rejected", "success")))
+    statuses = []
+
+    assert joiner.run_group("group-1", on_status=statuses.append) == "success"
+    assert calls == ["1.1.1.1", "2.2.2.2"]
+    assert any("Raid Night: server 1 of 2 (Alpha), attempt 1: advancing after rejected." == item for item in statuses)
+
+
+def test_run_group_advances_after_timeout_before_unclear_limit(monkeypatch):
+    targets = [
+        {"id": "one", "name": "Alpha", "ip": "1.1.1.1", "port": 7777},
+        {"id": "two", "name": "Bravo", "ip": "2.2.2.2", "port": 7778},
+    ]
+    calls = _configure_group_run(monkeypatch, targets, iter(("timeout", "success")), max_unclear=2)
+
+    assert joiner.run_group("group-1") == "success"
+    assert calls == ["1.1.1.1", "2.2.2.2"]
+
+
+def test_run_group_loops_to_first_server_after_final_rejection(monkeypatch):
+    targets = [
+        {"id": "one", "name": "Alpha", "ip": "1.1.1.1", "port": 7777},
+        {"id": "two", "name": "Bravo", "ip": "2.2.2.2", "port": 7778},
+    ]
+    calls = _configure_group_run(monkeypatch, targets, iter(("rejected", "rejected", "success")))
+
+    assert joiner.run_group("group-1") == "success"
+    assert calls == ["1.1.1.1", "2.2.2.2", "1.1.1.1"]
+
+
+def test_run_group_resets_unclear_counter_when_advancing(monkeypatch):
+    targets = [
+        {"id": "one", "name": "Alpha", "ip": "1.1.1.1", "port": 7777},
+        {"id": "two", "name": "Bravo", "ip": "2.2.2.2", "port": 7778},
+    ]
+    calls = _configure_group_run(monkeypatch, targets, iter(("unclassified", "unclassified", "success")))
+
+    assert joiner.run_group("group-1") == "success"
+    assert calls == ["1.1.1.1", "2.2.2.2", "1.1.1.1"]
+
+
+def test_run_group_enforces_global_attempt_limit_across_servers(monkeypatch):
+    targets = [
+        {"id": "one", "name": "Alpha", "ip": "1.1.1.1", "port": 7777},
+        {"id": "two", "name": "Bravo", "ip": "2.2.2.2", "port": 7778},
+    ]
+    calls = _configure_group_run(monkeypatch, targets, iter(("rejected", "rejected", "success")), max_attempts=2)
+
+    assert joiner.run_group("group-1") == "gave_up"
+    assert calls == ["1.1.1.1", "2.2.2.2"]
+
+
+def test_run_group_enforces_global_runtime_limit_across_servers(monkeypatch):
+    targets = [
+        {"id": "one", "name": "Alpha", "ip": "1.1.1.1", "port": 7777},
+        {"id": "two", "name": "Bravo", "ip": "2.2.2.2", "port": 7778},
+    ]
+    calls = _configure_group_run(monkeypatch, targets, iter(("rejected",)))
+    joiner.config_mod.load_config()["max_minutes"] = 1
+    times = iter((0, 0, 60))
+    monkeypatch.setattr(joiner.time, "monotonic", lambda: next(times))
+
+    assert joiner.run_group("group-1") == "gave_up"
+    assert calls == ["1.1.1.1"]
+
+
+def test_run_group_stops_during_advance_delay(monkeypatch):
+    class StopDuringDelay:
+        def __init__(self):
+            self.stopped = False
+
+        def is_set(self):
+            return self.stopped
+
+        def wait(self, _timeout):
+            self.stopped = True
+            return True
+
+    targets = [
+        {"id": "one", "name": "Alpha", "ip": "1.1.1.1", "port": 7777},
+        {"id": "two", "name": "Bravo", "ip": "2.2.2.2", "port": 7778},
+    ]
+    calls = _configure_group_run(monkeypatch, targets, iter(("rejected",)))
+    joiner.config_mod.load_config()["retry_interval_s"] = 5
+    stop = StopDuringDelay()
+
+    assert joiner.run_group("group-1", stop_event=stop) == "stopped"
+    assert calls == ["1.1.1.1"]
+
+
+@pytest.mark.parametrize(
+    ("groups", "expected"),
+    [([], "not_found"), ([{"id": "group-1", "name": "Empty", "server_ids": []}], "empty_group")],
+)
+def test_run_group_rejects_missing_or_empty_group_without_starting_game(monkeypatch, groups, expected):
+    monkeypatch.setattr(joiner, "resolve_target", lambda *_args: [], raising=False)
+    monkeypatch.setattr(joiner, "server_store", SimpleNamespace(load_store=lambda: {"groups": groups}), raising=False)
+    monkeypatch.setattr(joiner.winput, "set_dpi_awareness", lambda: (_ for _ in ()).throw(AssertionError("must not start")))
+    monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
+
+    assert joiner.run_group("group-1") == expected

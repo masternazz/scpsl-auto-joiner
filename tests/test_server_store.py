@@ -87,3 +87,16 @@ def test_save_rejects_invalid_version_one_server_record(tmp_path):
     path = str(tmp_path / "servers.json")
     with pytest.raises(ValueError, match="port"):
         server_store.save_store({"version": 1, "servers": [{"id": "x", "name": "Bad", "ip": "1.2.3.4", "port": 0}], "groups": []}, path)
+
+
+def test_load_rejects_group_that_references_an_unknown_server(tmp_path):
+    path = str(tmp_path / "servers.json")
+    with open(path, "w", encoding="utf-8") as stream:
+        json.dump({
+            "version": 1,
+            "servers": [{"id": "one", "name": "One", "ip": "1.2.3.4", "port": 7777}],
+            "groups": [{"id": "group", "name": "Ordered", "server_ids": ["missing", "one"]}],
+        }, stream)
+
+    with pytest.raises(ValueError, match="unknown server ID"):
+        server_store.load_store(path)
