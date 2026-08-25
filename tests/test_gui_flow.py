@@ -315,3 +315,130 @@ def test_delete_selected_server_confirms_and_refreshes_picker(monkeypatch):
     assert window.server_count_label.text() == "1 SAVED"
     assert window.server_box.currentText() != "Canada #2"
     window.close()
+
+
+def _browser_store():
+    return {
+        "version": 1,
+        "servers": [
+            {"id": "canada", "name": "Canada #2", "ip": "1.2.3.4", "port": 7778},
+            {"id": "europe", "name": "Europe #1", "ip": "5.6.7.8", "port": 7779},
+        ],
+        "groups": [{"id": "raid", "name": "Raid night", "server_ids": ["europe", "canada"]}],
+    }
+
+
+def test_server_cards_filter_and_select_a_saved_server(monkeypatch):
+    qt_app = app()
+    store = _browser_store()
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: {
+        item["name"]: {"ip": item["ip"], "port": item["port"]} for item in store["servers"]
+    })
+    monkeypatch.setattr(gui.resolver, "load_store", lambda: store)
+    window = gui.MainWindow()
+
+    window.server_search.setText("canada")
+    qt_app.processEvents()
+    assert list(window.server_card_buttons) == ["Canada #2"]
+
+    window.server_card_buttons["Canada #2"].click()
+    qt_app.processEvents()
+    assert window.server_box.currentText() == "Canada #2"
+    assert "1.2.3.4:7778" in window.endpoint_preview.text()
+    window.close()
+
+
+def test_selected_server_refresh_uses_injected_query_result(monkeypatch):
+    qt_app = app()
+    store = _browser_store()
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: {
+        item["name"]: {"ip": item["ip"], "port": item["port"]} for item in store["servers"]
+    })
+    monkeypatch.setattr(gui.resolver, "load_store", lambda: store)
+    monkeypatch.setattr(gui.resolver, "query_server", lambda *_args: {
+        "players": 7, "max_players": 20, "available": True, "latency_ms": 12.5,
+    })
+    monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
+    window = gui.MainWindow()
+    window.server_box.setCurrentText("Canada #2")
+
+    window.refresh_selected_server()
+    qt_app.processEvents()
+
+    assert "7 / 20 players" in window.server_card_text["Canada #2"].text()
+    assert "12.5 ms" in window.server_card_text["Canada #2"].text()
+    window.close()
+
+
+def test_save_server_from_form_renames_and_edits_endpoint(monkeypatch):
+    qt_app = app()
+    store = _browser_store()
+    changes = []
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: {
+        item["name"]: {"ip": item["ip"], "port": item["port"]} for item in store["servers"]
+    })
+    monkeypatch.setattr(gui.resolver, "load_store", lambda: store)
+
+    def update_server(server_id, name, ip, port):
+        changes.append((server_id, name, ip, port))
+        item = next(item for item in store["servers"] if item["id"] == server_id)
+        item.update(name=name, ip=ip, port=port)
+
+    monkeypatch.setattr(gui.resolver, "update_server", update_server)
+    window = gui.MainWindow()
+    window.server_box.setCurrentText("Canada #2")
+    window.server_name_input.setText("Canada Prime")
+    window.server_endpoint_input.setText("9.8.7.6:7780")
+
+    window.save_server_from_form()
+    qt_app.processEvents()
+
+    assert changes == [("canada", "Canada Prime", "9.8.7.6", 7780)]
+    assert window.server_box.currentText() == "Canada Prime"
+    window.close()
+
+
+def test_delete_selected_server_confirms_through_browser_action(monkeypatch):
+    qt_app = app()
+    store = _browser_store()
+    deleted = []
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: {
+        item["name"]: {"ip": item["ip"], "port": item["port"]} for item in store["servers"]
+    })
+    monkeypatch.setattr(gui.resolver, "load_store", lambda: store)
+    monkeypatch.setattr(gui.resolver, "forget_server", lambda name: deleted.append(name) or True)
+    monkeypatch.setattr(gui.QMessageBox, "question", lambda *_args, **_kwargs: gui.QMessageBox.Yes)
+    window = gui.MainWindow()
+    window.server_box.setCurrentText("Canada #2")
+
+    window.delete_selected_server()
+    qt_app.processEvents()
+
+    assert deleted == ["Canada #2"]
+    window.close()
+
+
+def test_group_reorder_is_saved_and_start_group_runs_in_background(monkeypatch):
+    qt_app = app()
+    store = _browser_store()
+    saved = []
+    started = []
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: {
+        item["name"]: {"ip": item["ip"], "port": item["port"]} for item in store["servers"]
+    })
+    monkeypatch.setattr(gui.resolver, "load_store", lambda: store)
+    monkeypatch.setattr(gui.resolver, "update_group", lambda group_id, name, ids: saved.append((group_id, name, ids)))
+    monkeypatch.setattr(gui.joiner, "run_group", lambda group_id, **_kwargs: started.append(group_id) or "success")
+    monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
+    window = gui.MainWindow()
+
+    window.group_box.setCurrentIndex(0)
+    window.group_members.setCurrentRow(1)
+    window.move_group_member(-1)
+    window.create_or_update_group()
+    window.start_selected_group()
+    qt_app.processEvents()
+
+    assert saved == [("raid", "Raid night", ["canada", "europe"])]
+    assert started == ["raid"]
+    window.close()

@@ -25,6 +25,10 @@ def load_servers(path=None):
     return {server["name"]: {"ip": server["ip"], "port": server["port"]} for server in data["servers"]}
 
 
+def load_store(path=None):
+    return server_store.load_store(path or SERVERS_PATH)
+
+
 def save_servers(servers, path=None):
     path = path or SERVERS_PATH
     server_store.save_store(servers, path)
@@ -41,6 +45,22 @@ def forget_server(name, path=None):
     if server is None:
         return False
     return server_store.delete_server(server["id"], path)
+
+
+def update_server(server_id, name, ip, port, path=None):
+    return server_store.update_server(server_id, name, ip, port, path or SERVERS_PATH)
+
+
+def create_group(name, server_ids, path=None):
+    return server_store.create_group(name, server_ids, path or SERVERS_PATH)
+
+
+def update_group(group_id, name, server_ids, path=None):
+    return server_store.update_group(group_id, server_ids, path or SERVERS_PATH, name=name)
+
+
+def delete_group(group_id, path=None):
+    return server_store.delete_group(group_id, path or SERVERS_PATH)
 
 
 def _parse_a2s_info(packet):

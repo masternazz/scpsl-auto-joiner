@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QApplication, QComboBox, QCompleter, QDialog, QDialogButtonBox, QFrame, QGridLayout,
     QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
     QProgressBar, QScrollArea, QSizePolicy, QSpacerItem, QStackedWidget,
-    QCheckBox, QSpinBox, QTextEdit, QVBoxLayout, QWidget,
+    QCheckBox, QListWidget, QListWidgetItem, QSpinBox, QTextEdit, QVBoxLayout, QWidget,
 )
 
 import config as config_mod
@@ -58,6 +58,7 @@ class Bridge(QObject):
     update_available = Signal(object)
     update_finished = Signal(str, bool)
     restart_requested = Signal()
+    server_refreshed = Signal(str, object)
 
 
 def label(text, style="body"):
@@ -241,9 +242,13 @@ class MainWindow(QMainWindow):
         self.bridge.update_available.connect(self.show_update_notice)
         self.bridge.update_finished.connect(self.update_finished_notice)
         self.bridge.restart_requested.connect(QApplication.quit)
+        self.bridge.server_refreshed.connect(self.apply_server_refresh)
         self.busy = False
         self.stop_event = threading.Event()
         self.servers = {}
+        self.server_records = {}
+        self.server_details = {}
+        self.groups = []
         self.setWindowTitle("SCP:SL // CONTAINMENT")
         self.setMinimumSize(760, 560)
         self.resize(1180, 760)
@@ -351,12 +356,30 @@ class MainWindow(QMainWindow):
         box.addWidget(label("Saved names stay local and can be reused whenever you play.", "body"))
         box.addSpacing(8)
         selector_header = QHBoxLayout()
-        selector_header.addWidget(label("SERVER NAME", "fieldLabel"))
+        selector_header.addWidget(label("SAVED SERVER BROWSER", "fieldLabel"))
         selector_header.addStretch()
         self.server_count_label = label("0 SAVED", "eyebrow")
         self.server_count_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         selector_header.addWidget(self.server_count_label)
         box.addLayout(selector_header)
+        self.server_search = QLineEdit()
+        self.server_search.setObjectName("serverSearch")
+        self.server_search.setAccessibleName("Search saved servers")
+        self.server_search.setPlaceholderText("Search by name or endpoint…")
+        self.server_search.textChanged.connect(self.refresh_server_cards)
+        box.addWidget(self.server_search)
+        self.server_cards_content = QWidget()
+        self.server_cards_layout = QVBoxLayout(self.server_cards_content)
+        self.server_cards_layout.setContentsMargins(0, 0, 0, 0)
+        self.server_cards_layout.setSpacing(8)
+        self.server_cards_scroll = QScrollArea()
+        self.server_cards_scroll.setObjectName("serverCardsScroll")
+        self.server_cards_scroll.setWidgetResizable(True)
+        self.server_cards_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.server_cards_scroll.setMinimumHeight(180)
+        self.server_cards_scroll.setMaximumHeight(310)
+        self.server_cards_scroll.setWidget(self.server_cards_content)
+        box.addWidget(self.server_cards_scroll)
         self.server_box = QComboBox(); self.server_box.setEditable(True); self.server_box.setInsertPolicy(QComboBox.NoInsert); self.server_box.setPlaceholderText("Start typing a saved server…")
         self.server_box.setObjectName("serverCombo")
         self.server_box.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
@@ -385,6 +408,22 @@ class MainWindow(QMainWindow):
         self.endpoint_preview = label("No saved server selected.", "helper")
         self.endpoint_preview.setProperty("role", "endpoint")
         box.addWidget(self.endpoint_preview)
+        form = QGridLayout(); form.setHorizontalSpacing(10); form.setVerticalSpacing(6)
+        form.addWidget(label("DISPLAY NAME", "fieldLabel"), 0, 0)
+        form.addWidget(label("ENDPOINT", "fieldLabel"), 0, 1)
+        self.server_name_input = QLineEdit(); self.server_name_input.setAccessibleName("Server display name")
+        self.server_endpoint_input = QLineEdit(); self.server_endpoint_input.setAccessibleName("Server endpoint")
+        form.addWidget(self.server_name_input, 1, 0); form.addWidget(self.server_endpoint_input, 1, 1)
+        form.setColumnStretch(0, 1); form.setColumnStretch(1, 1)
+        box.addLayout(form)
+        server_actions = QHBoxLayout(); server_actions.setSpacing(10)
+        self.refresh_server_button = QPushButton("Refresh selected")
+        self.save_server_button = QPushButton("Save edits")
+        self.save_server_button.setProperty("kind", "primary")
+        self.refresh_server_button.clicked.connect(self.refresh_selected_server)
+        self.save_server_button.clicked.connect(self.save_server_from_form)
+        server_actions.addWidget(self.refresh_server_button); server_actions.addWidget(self.save_server_button); server_actions.addStretch()
+        box.addLayout(server_actions)
         self.join_button = QPushButton("Start auto-join"); self.join_button.setProperty("kind", "primary")
         self.remember_button = QPushButton("Remember a server")
         self.delete_server_button = QPushButton("Delete selected")
@@ -397,7 +436,7 @@ class MainWindow(QMainWindow):
         self.stop_button.setMaximumWidth(70)
         self.stop_button.setEnabled(False)
         self.join_button.clicked.connect(self.join); self.remember_button.clicked.connect(self.remember)
-        self.delete_server_button.clicked.connect(self.delete_server)
+        self.delete_server_button.clicked.connect(self.delete_selected_server)
         self.stop_button.clicked.connect(self.stop_join)
         box.addWidget(self.join_button)
         secondary_actions = QHBoxLayout(); secondary_actions.setSpacing(10)
@@ -405,6 +444,48 @@ class MainWindow(QMainWindow):
         box.addLayout(secondary_actions)
         box.addWidget(label("Remember a server watches your next normal connection, detects its IP and port, then asks you to give it a friendly name.", "helper"))
         layout.addWidget(destination)
+        groups, group_box = self.card()
+        group_box.addWidget(label("ORDERED GROUPS", "eyebrow"))
+        group_box.addWidget(label("Start servers in a preferred order", "section"))
+        group_box.addWidget(label("A group advances to the next saved server after a rejection or timeout. Individual server quick start remains available above.", "body"))
+        group_picker = QHBoxLayout(); group_picker.setSpacing(10)
+        self.group_box = QComboBox(); self.group_box.setAccessibleName("Saved server group")
+        self.group_box.currentIndexChanged.connect(self.load_group_form)
+        self.new_group_button = QPushButton("New group")
+        self.new_group_button.clicked.connect(self.new_group)
+        group_picker.addWidget(self.group_box, 1); group_picker.addWidget(self.new_group_button)
+        group_box.addLayout(group_picker)
+        group_box.addWidget(label("GROUP NAME", "fieldLabel"))
+        self.group_name_input = QLineEdit(); self.group_name_input.setAccessibleName("Group name")
+        group_box.addWidget(self.group_name_input)
+        group_box.addWidget(label("SERVER ORDER", "fieldLabel"))
+        self.group_members = QListWidget(); self.group_members.setAccessibleName("Ordered group servers")
+        self.group_members.setMaximumHeight(140)
+        group_box.addWidget(self.group_members)
+        self.add_server_to_group_button = QPushButton("Add selected server")
+        self.remove_group_member_button = QPushButton("Remove")
+        self.move_group_up_button = QPushButton("Move up")
+        self.move_group_down_button = QPushButton("Move down")
+        self.add_server_to_group_button.clicked.connect(self.add_selected_server_to_group)
+        self.remove_group_member_button.clicked.connect(self.remove_group_member)
+        self.move_group_up_button.clicked.connect(lambda: self.move_group_member(-1))
+        self.move_group_down_button.clicked.connect(lambda: self.move_group_member(1))
+        group_box.addWidget(self.add_server_to_group_button)
+        member_actions = QHBoxLayout(); member_actions.setSpacing(10)
+        for button in (self.remove_group_member_button, self.move_group_up_button, self.move_group_down_button):
+            member_actions.addWidget(button)
+        member_actions.addStretch(); group_box.addLayout(member_actions)
+        group_actions = QHBoxLayout(); group_actions.setSpacing(10)
+        self.save_group_button = QPushButton("Save group"); self.save_group_button.setProperty("kind", "primary")
+        self.delete_group_button = QPushButton("Delete group"); self.delete_group_button.setProperty("kind", "danger")
+        self.start_group_button = QPushButton("Start group")
+        self.start_group_button.setProperty("kind", "primary")
+        self.save_group_button.clicked.connect(self.create_or_update_group)
+        self.delete_group_button.clicked.connect(self.delete_selected_group)
+        self.start_group_button.clicked.connect(self.start_selected_group)
+        group_actions.addWidget(self.save_group_button); group_actions.addWidget(self.delete_group_button); group_actions.addWidget(self.start_group_button); group_actions.addStretch()
+        group_box.addLayout(group_actions)
+        layout.addWidget(groups)
         activity, activity_box = self.card()
         row = QHBoxLayout(); row.addWidget(label("LIVE FEED", "eyebrow")); row.addStretch(); self.feed = label("IDLE", "pill"); row.addWidget(self.feed); activity_box.addLayout(row)
         self.status = label("Ready. Automatic direct start and background retries are enabled.", "status")
@@ -568,13 +649,25 @@ class MainWindow(QMainWindow):
     def refresh(self):
         current = self.server_box.currentText()
         self.servers = resolver.load_servers()
+        try:
+            stored = resolver.load_store()
+        except (OSError, ValueError):
+            stored = {"servers": [], "groups": []}
+        self.server_records = {item["name"]: dict(item) for item in stored.get("servers", [])}
+        for name, endpoint in self.servers.items():
+            self.server_records.setdefault(name, {"id": name, "name": name, **endpoint})
+        self.groups = [dict(group) for group in stored.get("groups", [])]
+        self.server_box.blockSignals(True)
         self.server_box.clear(); self.server_box.addItems(sorted(self.servers))
         count = len(self.servers)
         self.server_count_label.setText(f"{count} SAVED")
         self.saved_servers_button.setEnabled(bool(count))
         if current in self.servers:
             self.server_box.setCurrentText(current)
+        self.server_box.blockSignals(False)
         self.update_endpoint_preview(self.server_box.currentText())
+        self.refresh_server_cards()
+        self.refresh_groups()
         cfg = config_mod.load_config(); manual = cfg.get("navigation_mode") == "manual" and config_mod.calibrated(cfg)
         legacy = cfg.get("navigation_mode") == "manual" and not config_mod.calibrated(cfg)
         text = "Saved calibration is active for retries." if manual else ("Old DPI-scaled calibration disabled — calibrate once again." if legacy else "Automatic scaling enabled — calibration usually is not needed.")
@@ -647,6 +740,95 @@ class MainWindow(QMainWindow):
         if query and self.server_completer.completionCount():
             self.server_completer.complete()
 
+    def refresh_server_cards(self, _query=None):
+        """Render the searchable saved-server browser from local state only."""
+        query = self.server_search.text().casefold().strip()
+        self.server_card_buttons = {}
+        self.server_card_text = {}
+        while self.server_cards_layout.count():
+            item = self.server_cards_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        matched = []
+        for name in sorted(self.servers, key=str.casefold):
+            entry = self.servers[name]
+            searchable = f"{name} {entry['ip']} {entry['port']}".casefold()
+            if not query or query in searchable:
+                matched.append(name)
+        if not matched:
+            self.server_cards_layout.addWidget(label("No saved servers match this search.", "helper"))
+        for name in matched:
+            card = QFrame(); card.setObjectName("serverBrowserCard")
+            card_layout = QVBoxLayout(card); card_layout.setContentsMargins(14, 12, 14, 12); card_layout.setSpacing(4)
+            choose = QPushButton(name); choose.setObjectName("serverCardButton"); choose.setProperty("kind", "serverCard")
+            choose.setAccessibleName(f"Select {name}")
+            choose.clicked.connect(lambda _checked=False, saved_name=name: self.select_server(saved_name))
+            details = label(self.server_card_description(name), "helper")
+            card_layout.addWidget(choose); card_layout.addWidget(details)
+            self.server_cards_layout.addWidget(card)
+            self.server_card_buttons[name] = choose
+            self.server_card_text[name] = details
+        self.server_cards_layout.addStretch()
+
+    def server_card_description(self, name):
+        entry = self.servers[name]
+        details = self.server_details.get(name)
+        if details is None:
+            return f"{entry['ip']}:{entry['port']}  ·  Players: not refreshed  ·  Availability: not refreshed  ·  Latency: not refreshed  ·  Last refresh: never"
+        players = details.get("players")
+        maximum = details.get("max_players")
+        player_text = f"{players} / {maximum} players" if players is not None and maximum is not None else "Players unavailable"
+        availability = "available" if details.get("available") else "unavailable"
+        latency = details.get("latency_ms")
+        latency_text = f"{latency:g} ms" if isinstance(latency, (int, float)) else "unavailable"
+        return f"{entry['ip']}:{entry['port']}  ·  {player_text}  ·  Availability: {availability}  ·  Latency: {latency_text}  ·  Last refresh: {details['last_refresh']}"
+
+    def select_server(self, name):
+        if name in self.servers:
+            self.server_box.setCurrentText(name)
+
+    def refresh_selected_server(self):
+        name = self.server_box.currentText().strip()
+        entry = self.servers.get(name)
+        if not entry or self.busy:
+            return
+        self.refresh_server_button.setEnabled(False)
+        threading.Thread(target=self._query_selected_server, args=(name, entry["ip"], entry["port"]), daemon=True).start()
+
+    def _query_selected_server(self, name, ip, port):
+        self.bridge.server_refreshed.emit(name, resolver.query_server(ip, port))
+
+    def apply_server_refresh(self, name, result):
+        self.refresh_server_button.setEnabled(not self.busy)
+        details = dict(result or {})
+        details["available"] = bool(details.get("available"))
+        details["last_refresh"] = time.strftime("%H:%M:%S")
+        self.server_details[name] = details
+        self.refresh_server_cards()
+        if details["available"]:
+            self.bridge.status.emit(f"Refreshed {name}.")
+        else:
+            self.bridge.status.emit(f"Could not reach {name} during refresh.")
+
+    def save_server_from_form(self):
+        selected = self.server_box.currentText().strip()
+        record = self.server_records.get(selected)
+        name = self.server_name_input.text().strip()
+        endpoint = self.server_endpoint_input.text().strip()
+        if not record or not name or ":" not in endpoint or self.busy:
+            self.bridge.status.emit("Choose a saved server and enter name plus host:port.")
+            return
+        ip, port = endpoint.rsplit(":", 1)
+        try:
+            resolver.update_server(record["id"], name, ip, int(port))
+        except (KeyError, ValueError):
+            self.bridge.status.emit("Could not save the server edits. Check the display name and endpoint.")
+            return
+        self.server_details.pop(selected, None)
+        self.refresh()
+        self.select_server(name)
+        self.bridge.status.emit(f"Saved edits for {name}.")
+
     def open_data_folder(self):
         try:
             os.startfile(app_dir())
@@ -658,9 +840,117 @@ class MainWindow(QMainWindow):
         entry = self.servers.get(name)
         if entry:
             self.endpoint_preview.setText(f"Will join {entry['ip']}:{entry['port']}")
+            self.server_name_input.setText(name)
+            self.server_endpoint_input.setText(f"{entry['ip']}:{entry['port']}")
         else:
             self.endpoint_preview.setText("Choose a saved server from the list.")
+            self.server_name_input.clear()
+            self.server_endpoint_input.clear()
         self.delete_server_button.setEnabled(bool(entry) and not self.busy)
+        self.save_server_button.setEnabled(bool(entry) and not self.busy)
+        self.refresh_server_button.setEnabled(bool(entry) and not self.busy)
+
+    def refresh_groups(self, selected_id=None):
+        selected_id = selected_id or self.group_box.currentData()
+        self.group_box.blockSignals(True)
+        self.group_box.clear()
+        for group in self.groups:
+            self.group_box.addItem(group["name"], group["id"])
+        index = self.group_box.findData(selected_id)
+        self.group_box.setCurrentIndex(index if index >= 0 else (0 if self.groups else -1))
+        self.group_box.blockSignals(False)
+        self.load_group_form()
+
+    def load_group_form(self, _index=None):
+        group_id = self.group_box.currentData()
+        group = next((item for item in self.groups if item["id"] == group_id), None)
+        self.group_members.clear()
+        if group is None:
+            self.group_name_input.clear()
+            self.delete_group_button.setEnabled(False)
+            self.start_group_button.setEnabled(False)
+            return
+        self.group_name_input.setText(group["name"])
+        for server_id in group["server_ids"]:
+            record = next((item for item in self.server_records.values() if item["id"] == server_id), None)
+            if record:
+                item = QListWidgetItem(f"{record['name']}  ·  {record['ip']}:{record['port']}")
+                item.setData(Qt.UserRole, server_id)
+                self.group_members.addItem(item)
+        self.delete_group_button.setEnabled(not self.busy)
+        self.start_group_button.setEnabled(bool(group["server_ids"]) and not self.busy)
+
+    def new_group(self):
+        self.group_box.setCurrentIndex(-1)
+        self.group_name_input.clear()
+        self.group_members.clear()
+        self.delete_group_button.setEnabled(False)
+        self.start_group_button.setEnabled(False)
+
+    def add_selected_server_to_group(self):
+        record = self.server_records.get(self.server_box.currentText().strip())
+        if record is None:
+            return
+        if any(self.group_members.item(row).data(Qt.UserRole) == record["id"] for row in range(self.group_members.count())):
+            return
+        item = QListWidgetItem(f"{record['name']}  ·  {record['ip']}:{record['port']}")
+        item.setData(Qt.UserRole, record["id"])
+        self.group_members.addItem(item)
+
+    def remove_group_member(self):
+        row = self.group_members.currentRow()
+        if row >= 0:
+            self.group_members.takeItem(row)
+
+    def move_group_member(self, offset):
+        row = self.group_members.currentRow()
+        target = row + offset
+        if row < 0 or target < 0 or target >= self.group_members.count():
+            return
+        item = self.group_members.takeItem(row)
+        self.group_members.insertItem(target, item)
+        self.group_members.setCurrentRow(target)
+
+    def create_or_update_group(self):
+        name = self.group_name_input.text().strip()
+        server_ids = [self.group_members.item(row).data(Qt.UserRole) for row in range(self.group_members.count())]
+        group_id = self.group_box.currentData()
+        if not name or not server_ids or self.busy:
+            self.bridge.status.emit("Enter a group name and add at least one saved server.")
+            return
+        try:
+            if group_id:
+                resolver.update_group(group_id, name, server_ids)
+            else:
+                group_id = resolver.create_group(name, server_ids)["id"]
+        except (KeyError, ValueError):
+            self.bridge.status.emit("Could not save the group. Check its name and server order.")
+            return
+        self.refresh()
+        self.refresh_groups(group_id)
+        self.bridge.status.emit(f"Saved group {name}.")
+
+    def delete_selected_group(self):
+        group_id = self.group_box.currentData()
+        group_name = self.group_box.currentText()
+        if not group_id or self.busy:
+            return
+        answer = QMessageBox.question(self, "Delete server group", f"Delete {group_name}?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer == QMessageBox.Yes and resolver.delete_group(group_id):
+            self.refresh()
+            self.bridge.status.emit(f"Deleted group {group_name}.")
+
+    def start_selected_group(self):
+        group_id = self.group_box.currentData()
+        if not group_id or self.busy:
+            return
+        self.stop_event.clear(); self.set_busy(True); self.stop_button.setEnabled(True)
+        threading.Thread(target=self.run_group, args=(group_id,), daemon=True).start()
+
+    def run_group(self, group_id):
+        result = joiner.run_group(group_id, on_status=self.bridge.status.emit, stop_event=self.stop_event)
+        messages = {"success": "Joined successfully.", "stopped": "Auto-join stopped.", "gave_up": "Stopped after reaching the retry limit.", "unclear": "Stopped because the game returned an unclear result.", "not_found": "That group is not saved yet.", "empty_group": "That group has no saved servers."}
+        self.bridge.status.emit(messages.get(result, result)); self.bridge.busy.emit(False)
 
     def status_text(self, text):
         self.status.setText(text)
@@ -739,7 +1029,11 @@ class MainWindow(QMainWindow):
         if busy:
             self.live_log.clear()
             self.status_text("Starting auto-join…")
-        self.delete_server_button.setEnabled(not busy and self.server_box.currentText() in self.servers)
+        self.update_endpoint_preview(self.server_box.currentText())
+        self.delete_group_button.setEnabled(not busy and bool(self.group_box.currentData()))
+        group = next((item for item in self.groups if item["id"] == self.group_box.currentData()), None)
+        self.start_group_button.setEnabled(not busy and bool(group and group["server_ids"]))
+        self.save_group_button.setEnabled(not busy)
         if not busy:
             self.stop_button.setEnabled(False)
 
@@ -763,7 +1057,7 @@ class MainWindow(QMainWindow):
         if self.busy: return
         self.set_busy(True); threading.Thread(target=self.watch_server, daemon=True).start()
 
-    def delete_server(self):
+    def delete_selected_server(self):
         name = self.server_box.currentText().strip()
         entry = self.servers.get(name)
         if not entry or self.busy:
@@ -782,6 +1076,10 @@ class MainWindow(QMainWindow):
             self.bridge.status.emit(f"Deleted saved server {name}.")
         else:
             self.bridge.status.emit(f"Could not delete {name}; it was already missing.")
+
+    def delete_server(self):
+        """Compatibility seam for existing callers and tests."""
+        self.delete_selected_server()
 
     def watch_server(self):
         try:
@@ -858,6 +1156,9 @@ QPushButton[kind='danger']:hover {{ background: #382328; border-color: {RED}; }}
 QPushButton[kind='danger']:disabled {{ background: {CARD}; color: {SUBTLE}; border-color: {LINE}; }}
 QPushButton[kind='nav'] {{ background: transparent; color: {MUTED}; border: 0; text-align: left; padding: 12px 10px; }}
 QPushButton[kind='nav']:hover, QPushButton[kind='nav'][active='true'] {{ background: {CARD}; color: {TEXT}; }}
+QFrame#serverBrowserCard {{ background: {CARD}; border: 1px solid {LINE}; border-radius: 7px; }}
+QPushButton[kind='serverCard'] {{ background: transparent; border: 0; color: {TEXT}; font-weight: 700; text-align: left; padding: 2px 3px; }}
+QPushButton[kind='serverCard']:hover {{ color: {CYAN}; background: transparent; }}
 QPushButton#serverPickerButton {{ min-width: 50px; max-width: 50px; min-height: 50px; max-height: 50px; padding: 0; font-size: 20px; font-weight: 700; }}
 QPushButton#serverPickerButton:focus {{ border: 2px solid {CYAN}; }}
 QLineEdit, QComboBox, QTextEdit {{ background: #100c16; color: {TEXT}; border: 1px solid #514264; border-radius: 6px; padding: 10px 12px; selection-background-color: #5d3b85; }}

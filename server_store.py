@@ -141,6 +141,23 @@ def upsert_server(name, ip, port, path=None):
     return dict(server)
 
 
+def update_server(server_id, name, ip, port, path=None):
+    """Update a saved server without changing its group membership ID."""
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("invalid server name")
+    ip, port = _validate_endpoint(ip, port)
+    store = load_store(path)
+    name = name.strip()
+    if any(server["id"] != server_id and server["name"] == name for server in store["servers"]):
+        raise ValueError("duplicate server name")
+    for server in store["servers"]:
+        if server["id"] == server_id:
+            server.update({"name": name, "ip": ip, "port": port})
+            save_store(store, path)
+            return dict(server)
+    raise KeyError(server_id)
+
+
 def delete_server(server_id, path=None):
     store = load_store(path)
     before = len(store["servers"])
@@ -171,11 +188,11 @@ def create_group(name, server_ids, path=None):
     return dict(group)
 
 
-def update_group(group_id, server_ids, path=None):
+def update_group(group_id, server_ids, path=None, name=None):
     store = load_store(path)
     for index, group in enumerate(store["groups"]):
         if group["id"] == group_id:
-            updated = _group(group["name"], server_ids, store, group_id)
+            updated = _group(group["name"] if name is None else name, server_ids, store, group_id)
             store["groups"][index] = updated
             save_store(store, path)
             return dict(updated)
