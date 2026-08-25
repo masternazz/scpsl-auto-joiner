@@ -21,7 +21,7 @@ def test_rejected_signature():
         "  at Mirror.LiteNetLib4Mirror.LiteNetLib4MirrorClient+<>c__DisplayClass8_0."
         "<OnPeerDisconnected>b__0 () [0x00000] in <00000000000000000000000000000000>:0 \n"
     )
-    assert classify_log_text(text) == "rejected"
+    assert classify_log_text(text) == "rejected_or_unknown"
 
 
 def test_cancelled_signature():
@@ -32,12 +32,12 @@ def test_cancelled_signature():
         "IP: 1.2.3.4\n"
         "Port: 7777\n"
     )
-    assert classify_log_text(text) == "cancelled"
+    assert classify_log_text(text) == "rejected_or_unknown"
 
 
 def test_connecting_only_is_not_terminal():
     text = "Connecting to 1.2.3.4!\nConnection IP set to 1.2.3.4, port: 7777\n"
-    assert classify_log_text(text) == "connecting"
+    assert classify_log_text(text) == "connection-start"
 
 
 def test_unrelated_noise_is_none():
@@ -102,7 +102,7 @@ def test_logwatcher_wait_for_outcome_rejected(tmp_path):
     t.join()
     watcher.close()
 
-    assert result == "rejected"
+    assert result == "rejected_or_unknown"
 
 
 def test_logwatcher_wait_for_outcome_timeout(tmp_path):
@@ -136,7 +136,7 @@ def test_logwatcher_wait_for_outcome_stop_on_connecting(tmp_path):
     t.join()
     watcher.close()
 
-    assert result == "connecting"
+    assert result == "connection-start"
     assert elapsed < 1.0
 
 
@@ -196,9 +196,59 @@ def test_logwatcher_reopens_when_game_replaces_player_log(tmp_path):
     # Windows keeps the watcher's handle open, so model Unity's observable
     # behavior here: truncate the active log and write the new session.
     with log_file.open("w", encoding="utf-8") as replacement:
-        replacement.write("Connecting to 1.2.3.4!\n")
+        replacement.write("new session prefix\n")
 
+    watcher.reset_if_replaced()
+    with log_file.open("a", encoding="utf-8") as replacement:
+        replacement.write("Connecting to 1.2.3.4!\n")
     assert watcher.wait_for_marker("Connecting to", timeout_s=0.5, poll_interval=0.01)
+    watcher.close()
+
+
+def test_classify_log_text_reports_menu_ready_and_loading():
+    assert classify_log_text(MENU_MARK) == "menu-ready"
+    assert classify_log_text("Loading server list...\n") == "loading"
+
+
+def test_classify_log_text_reports_disconnected_without_calling_it_full():
+    assert classify_log_text("OnPeerDisconnected\n") == "disconnected"
+
+
+def test_logwatcher_wait_for_outcome_stop_event_returns_stopped(tmp_path):
+    log_file = tmp_path / "test.log"
+    log_file.write_text("")
+    watcher = LogWatcher(path=str(log_file))
+    stop_event = threading.Event()
+    stop_event.set()
+
+    assert watcher.wait_for_outcome(1.0, stop_event=stop_event) == "stopped"
+    watcher.close()
+
+
+def test_logwatcher_read_new_tracks_endpoint(tmp_path):
+    log_file = tmp_path / "Player.log"
+    log_file.write_text("")
+    watcher = LogWatcher(path=str(log_file))
+    with log_file.open("a", encoding="utf-8") as log:
+        log.write("Connection IP set to 158.69.52.5, port: 7777\n")
+
+    assert watcher.read_new().startswith("Connection IP set")
+    assert watcher.last_endpoint == ("158.69.52.5", 7777)
+    watcher.close()
+
+
+def test_logwatcher_reset_after_truncation_does_not_replay_new_file_prefix(tmp_path):
+    log_file = tmp_path / "Player.log"
+    log_file.write_text("old session " + ("x" * 200) + "\n")
+    watcher = LogWatcher(path=str(log_file))
+    with log_file.open("w", encoding="utf-8") as replacement:
+        replacement.write("new session prefix\n")
+
+    watcher.reset_if_replaced()
+    assert watcher.read_new() == ""
+    with log_file.open("a", encoding="utf-8") as log:
+        log.write("Connecting to 1.2.3.4!\n")
+    assert watcher.read_new() == "Connecting to 1.2.3.4!\n"
     watcher.close()
 
 
@@ -247,7 +297,7 @@ PollingLoop stopped
 [T58] PollingLoop stopped
 """
 
-    assert classify_log_text(text) == "rejected"
+    assert classify_log_text(text) == "rejected_or_unknown"
 
 
 def test_response_without_polling_shutdown_is_still_connecting():
@@ -259,4 +309,4 @@ PollingLoop started
 [T36] PollingLoop started
 """
 
-    assert classify_log_text(text) == "connecting"
+    assert classify_log_text(text) == "connection-start"

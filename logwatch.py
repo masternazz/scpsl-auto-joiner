@@ -13,6 +13,8 @@ CONNECTING_MARK = "Connecting to"
 RESPONSE_MARK = "Response sent. ID:"
 POLLING_STOP_MARK = "PollingLoop stopped"
 MENU_MARK = "Scene Manager: Loaded scene 'NewMainMenu'"
+LOADING_MARK = "Loading server list..."
+LOADING_SCENE_MARK = "Scene Manager: Loading scene"
 CONNECTING_IP_RE = re.compile(r"Connection IP set to ([0-9.]+), port: (\d+)")
 
 DEFAULT_LOG_PATH = os.path.join(
@@ -21,23 +23,28 @@ DEFAULT_LOG_PATH = os.path.join(
 
 
 def classify_log_text(text):
-    """Classify accumulated log text since a connect attempt started.
-    Returns "success", "rejected", "cancelled", "connecting", or None.
-    Checked in this order so a later success in the same buffer always wins
-    over an earlier rejection (a retry can succeed after prior failures)."""
+    """Return the strongest explicit observation in accumulated log text."""
     if SUCCESS_MARK in text:
         return "success"
     if DELAY_MARK in text and DISCONNECT_MARK in text:
-        return "rejected"
+        return "rejected_or_unknown"
     if RESPONSE_MARK in text:
         after_response = text.rsplit(RESPONSE_MARK, 1)[1]
         if after_response.count(POLLING_STOP_MARK) >= 2:
-            return "rejected"
+            return "rejected_or_unknown"
     if CANCEL_MARK in text:
-        return "cancelled"
-    if CONNECTING_MARK in text:
-        return "connecting"
-    return None
+        return "rejected_or_unknown"
+    if DISCONNECT_MARK in text:
+        return "disconnected"
+
+    observations = (
+        ("menu-ready", MENU_MARK),
+        ("loading", LOADING_MARK),
+        ("loading", LOADING_SCENE_MARK),
+        ("connection-start", CONNECTING_MARK),
+    )
+    latest = [(text.rfind(marker), outcome) for outcome, marker in observations if marker in text]
+    return max(latest)[1] if latest else None
 
 
 class LogWatcher:
@@ -54,8 +61,10 @@ class LogWatcher:
         except FileNotFoundError:
             self._fh = open(self.path, "a+", encoding="utf-8", errors="replace")
         self._file_signature = self._signature()
+        self._last_size = os.path.getsize(self.path)
         self._fh.seek(0, os.SEEK_END)
         self._pending = ""
+        self.last_endpoint = None
 
     def _signature(self):
         try:
@@ -64,31 +73,46 @@ class LogWatcher:
             return None
         return stat.st_dev, stat.st_ino
 
-    def _refresh_handle(self):
-        """Follow Unity if it truncates/replaces Player.log during startup."""
+    def reset_if_replaced(self):
+        """Rebaseline after Player.log is replaced or truncated.
+
+        The new file's existing prefix belongs to the new session's history,
+        not to the current observation window, so reopen at its end.
+        """
         try:
             size = os.path.getsize(self.path)
             position = self._fh.tell()
         except (OSError, ValueError):
             return
         signature = self._signature()
-        if signature == self._file_signature and size >= position:
+        if signature == self._file_signature and size >= position and size >= self._last_size:
             return
         self._fh.close()
-        self._fh = open(self.path, "r", encoding="utf-8", errors="replace")
+        try:
+            self._fh = open(self.path, "r", encoding="utf-8", errors="replace")
+        except FileNotFoundError:
+            self._fh = open(self.path, "a+", encoding="utf-8", errors="replace")
         self._file_signature = signature
-        self._fh.seek(0)
+        self._fh.seek(0, os.SEEK_END)
+        self._pending = ""
+        self._last_size = size
+
+    def _refresh_handle(self):
+        """Follow Unity if it truncates/replaces Player.log."""
+        self.reset_if_replaced()
 
     def read_new(self):
         self._refresh_handle()
         text, self._pending = self._pending + self._fh.read(), ""
+        self._last_size = os.path.getsize(self.path)
+        endpoints = list(CONNECTING_IP_RE.finditer(text))
+        if endpoints:
+            match = endpoints[-1]
+            self.last_endpoint = (match.group(1), int(match.group(2)))
         return text
 
-    def wait_for_outcome(self, timeout_s, poll_interval=0.25, stop_on_connecting=False, stop_event=None):
-        """Accumulate new log text and classify it until a terminal outcome
-        (success/rejected/cancelled), a timeout, or — if stop_on_connecting —
-        the first sighting of "connecting" (used to confirm a click landed,
-        without waiting the full attempt timeout for a final result)."""
+    def wait_for_outcome(self, timeout_s, poll_interval=0.25, stop_event=None, *, stop_on_connecting=False):
+        """Accumulate log observations until an outcome, timeout, or stop."""
         deadline = time.monotonic() + timeout_s
         buf = ""
         while time.monotonic() < deadline:
@@ -96,11 +120,14 @@ class LogWatcher:
                 return "stopped"
             buf += self.read_new()
             result = classify_log_text(buf)
-            if result in ("success", "rejected", "cancelled"):
+            if result in ("success", "rejected_or_unknown", "disconnected"):
                 return result
-            if result == "connecting" and stop_on_connecting:
-                return "connecting"
-            time.sleep(poll_interval)
+            if result == "connection-start" and stop_on_connecting:
+                return "connection-start"
+            if stop_event:
+                stop_event.wait(poll_interval)
+            else:
+                time.sleep(poll_interval)
         buf += self.read_new()
         return classify_log_text(buf) or "timeout"
 
