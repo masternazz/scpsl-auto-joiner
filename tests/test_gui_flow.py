@@ -128,6 +128,9 @@ def test_calibration_explains_and_captures_four_points(monkeypatch):
         qt_app.processEvents()
         if expected_step < 4:
             assert f"Captured step {expected_step}" in dialog.countdown.text()
+            assert dialog.isVisible()
+            assert dialog.capture_button.isEnabled()
+            assert f"Step {expected_step + 1} of 4" in dialog.step_label.text()
 
     assert dialog.result() == QDialog.Accepted
     assert cfg["navigation_mode"] == "manual"

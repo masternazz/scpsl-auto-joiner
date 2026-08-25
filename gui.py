@@ -58,6 +58,7 @@ class CalibrationDialog(QDialog):
         self.setMinimumSize(560, 360)
         self.resize(620, 430)
         self.setModal(True)
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 28, 30, 28)
         layout.setSpacing(14)
@@ -123,9 +124,11 @@ class CalibrationDialog(QDialog):
             captured_step = self.index + 1
             self.cfg["click_points"][name] = [point.x(), point.y()]
             self.app.show()
-            self.show()
+            self.showNormal()
+            self.setWindowState(self.windowState() & ~Qt.WindowMinimized)
             self.raise_()
             self.activateWindow()
+            self.setFocus()
             self.capture_button.setText("Start 3-second capture")
             self.capture_button.setEnabled(True)
             self.index += 1
