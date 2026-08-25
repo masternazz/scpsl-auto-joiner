@@ -14,6 +14,16 @@ import resolver
 import winput
 from app_paths import app_dir, resource_path
 
+STARTUP_LOG = os.path.join(app_dir(), "startup-trace.log")
+
+
+def startup_trace(message):
+    try:
+        with open(STARTUP_LOG, "a", encoding="utf-8") as log:
+            log.write(f"{message}\n")
+    except OSError:
+        pass
+
 
 def resource_dir():
     return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
@@ -28,6 +38,7 @@ class Api:
         self.join_thread = None
 
     def get_state(self):
+        startup_trace("get_state called")
         cfg = config.load_config()
         return {
             "calibrated": config.calibrated(cfg),
@@ -108,13 +119,23 @@ class Api:
 
 
 def main():
+    startup_trace("main entered")
     api = Api()
     page = os.path.join(resource_dir(), "webui", "index.html")
+    startup_trace(f"page={page} exists={os.path.exists(page)}")
     window = webview.create_window("SCP:SL Auto-Joiner", page, js_api=api, width=1180, height=760, min_size=(980, 620))
+    startup_trace("window created")
     api.window = window
+    startup_trace("starting webview")
     try:
-        webview.start(gui="edgechromium", debug=not getattr(sys, "frozen", False))
+        webview.start(
+            debug=not getattr(sys, "frozen", False),
+            private_mode=False,
+            storage_path=os.path.join(app_dir(), "webview"),
+        )
+        startup_trace("webview stopped normally")
     except Exception:
+        startup_trace("webview raised an exception")
         error_path = os.path.join(app_dir(), "startup-error.log")
         with open(error_path, "a", encoding="utf-8") as log:
             traceback.print_exc(file=log)
