@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 500" role="img" aria-label="SCP:SL Auto-Joiner">
+  <rect width="1600" height="500" fill="#0d0a12"/>
+  <path d="M0 80H1600M0 160H1600M0 240H1600M0 320H1600M0 400H1600" stroke="#1d1728" stroke-width="1"/>
+  <path d="M100 0V500M200 0V500M300 0V500M400 0V500M500 0V500M600 0V500M700 0V500M800 0V500M900 0V500M1000 0V500M1100 0V500M1200 0V500M1300 0V500M1400 0V500M1500 0V500" stroke="#17121f" stroke-width="1"/>
+  <g transform="translate(1160 250)">
+    <circle r="190" fill="none" stroke="#3a2d4b" stroke-width="8"/>
+    <circle r="128" fill="none" stroke="#b186ff" stroke-width="5"/>
+    <path d="M0-190v62M0 128v62M-190 0h62M128 0h62" stroke="#b186ff" stroke-width="8"/>
+    <path d="M-76-48h152v96H-76z" fill="none" stroke="#f5effa" stroke-width="5"/>
+    <path d="M-42-24h84v48h-84z" fill="#b186ff"/>
+  </g>
+  <text x="110" y="220" fill="#f5effa" font-family="Segoe UI, Arial, sans-serif" font-size="68" font-weight="700" letter-spacing="6">SCP:SL</text>
+  <text x="116" y="290" fill="#b186ff" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="700" letter-spacing="8">AUTO-JOINER</text>
+  <path d="M118 335h340" stroke="#b186ff" stroke-width="4"/>
+  <text x="118" y="380" fill="#b1a3bd" font-family="Segoe UI, Arial, sans-serif" font-size="22" letter-spacing="2">SERVER RETRIES • WINDOWS UTILITY</text>
+</svg>

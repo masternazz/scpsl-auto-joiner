@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="SCP:SL Auto-Joiner mark">
+  <rect width="256" height="256" rx="28" fill="#0d0a12"/>
+  <circle cx="128" cy="128" r="88" fill="none" stroke="#b186ff" stroke-width="8"/>
+  <circle cx="128" cy="128" r="58" fill="none" stroke="#f5effa" stroke-width="4" opacity=".9"/>
+  <path d="M128 40v42M128 174v42M40 128h42M174 128h42" stroke="#b186ff" stroke-width="8"/>
+  <path d="M92 96h72v64H92z" fill="none" stroke="#f5effa" stroke-width="5"/>
+  <path d="M108 112h40v32h-40z" fill="#b186ff"/>
+  <path d="M116 128h24" stroke="#0d0a12" stroke-width="5"/>
+</svg>
