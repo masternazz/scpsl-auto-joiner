@@ -10,6 +10,8 @@ current-screen*.png
 dpi-screen*.png
 full-failed.png
 ui-*.png
+assets/generated/auto-join-frames/
+assets/generated/auto-join-palette.png
 *.log
 
 # Playwright/E2E scratch data

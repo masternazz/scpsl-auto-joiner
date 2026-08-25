@@ -108,12 +108,15 @@ def workflow_frame(state, frame, width=960, height=600):
 
 def workflow_gif():
     frames = []
-    durations = []
     for state, count, duration in ((0, 3, 550), (1, 3, 500), (2, 3, 500), (3, 4, 350), (4, 3, 450), (5, 5, 650)):
         for frame in range(count):
             frames.append(workflow_frame(state, frame))
-            durations.append(duration)
-    frames[0].save(OUT / "auto-join-flow.gif", save_all=True, append_images=frames[1:], duration=durations, loop=0, optimize=False)
+    frames_dir = OUT / "auto-join-frames"
+    frames_dir.mkdir(exist_ok=True)
+    for old in frames_dir.glob("frame_*.png"):
+        old.unlink()
+    for index, frame in enumerate(frames):
+        frame.save(frames_dir / f"frame_{index:04d}.png")
 
 
 mark().save(OUT / "containment-mark-purple.png")
