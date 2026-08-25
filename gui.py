@@ -1,6 +1,7 @@
 """Crisp, DPI-aware Qt desktop UI for the SCP:SL Auto-Joiner."""
 import os
 import threading
+from html import escape
 
 # Set the process coordinate system before Qt creates any windows. Native
 # calibration and Win32 clicks then agree even at 150/200/250% scaling.
@@ -20,6 +21,7 @@ import config as config_mod
 import joiner
 import logwatch
 import resolver
+import updater
 from app_paths import app_dir, resource_path
 
 BG = "#0d0a12"
@@ -40,6 +42,7 @@ class Bridge(QObject):
     status = Signal(str)
     busy = Signal(bool)
     saved = Signal(str, str)
+    update_available = Signal(str, str)
 
 
 def label(text, style="body"):
@@ -220,6 +223,7 @@ class MainWindow(QMainWindow):
         self.bridge.status.connect(self.status_text)
         self.bridge.busy.connect(self.set_busy)
         self.bridge.saved.connect(self.server_saved)
+        self.bridge.update_available.connect(self.show_update_notice)
         self.busy = False
         self.stop_event = threading.Event()
         self.servers = {}
@@ -229,6 +233,7 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(QIcon(resource_path("assets/app.ico")))
         self.build()
         self.refresh()
+        QTimer.singleShot(1200, self.check_for_updates)
 
     def build(self):
         shell = QWidget()
@@ -317,6 +322,11 @@ class MainWindow(QMainWindow):
     def join_page(self):
         content, layout = self.page_content()
         self.heading(layout, "CONTAINMENT OPERATIONS  /  READY", "Auto-Join", "Keep trying until a slot opens. Your physical mouse and keyboard stay free.")
+        self.update_notice = label("", "updateNotice")
+        self.update_notice.setTextFormat(Qt.RichText)
+        self.update_notice.setOpenExternalLinks(True)
+        self.update_notice.hide()
+        layout.addWidget(self.update_notice)
         destination, box = self.card()
         box.addWidget(label("DESTINATION", "eyebrow"))
         box.addWidget(label("Choose a saved server", "section"))
@@ -588,6 +598,24 @@ class MainWindow(QMainWindow):
     def status_text(self, text):
         self.status.setText(text)
 
+    def check_for_updates(self):
+        threading.Thread(target=self._check_for_updates, daemon=True).start()
+
+    def _check_for_updates(self):
+        try:
+            release = updater.check_for_update()
+        except Exception:
+            return
+        if release:
+            self.bridge.update_available.emit(release["version"], release["url"])
+
+    def show_update_notice(self, version, url):
+        self.update_notice.setText(
+            f"<b>Update available:</b> v{escape(version)}  "
+            f"<a href=\"{escape(url, quote=True)}\">Download it from GitHub</a>"
+        )
+        self.update_notice.show()
+
     def set_busy(self, busy):
         self.busy = busy; self.join_button.setEnabled(not busy); self.remember_button.setEnabled(not busy); self.progress.setVisible(busy); self.feed.setText("RUNNING" if busy else "IDLE")
         self.delete_server_button.setEnabled(not busy and self.server_box.currentText() in self.servers)
@@ -687,6 +715,7 @@ QLabel[role='brand'] {{ color: {TEXT}; font-size: 15px; font-weight: 700; }}
 QLabel[role='brandSub'] {{ color: {MUTED}; font-size: 10px; letter-spacing: 1px; }}
 QLabel[role='number'] {{ font-size: 13px; }}
 QLabel[role='warning'] {{ color: {AMBER}; font-weight: 600; }}
+QLabel[role='updateNotice'] {{ background: #261d33; color: {TEXT}; border: 1px solid {CYAN}; border-radius: 6px; padding: 11px 14px; }}
 QLabel[role='status'] {{ color: {TEXT}; font-size: 15px; }}
 QLabel[role='pill'] {{ color: {CYAN}; border: 1px solid #315a69; border-radius: 12px; padding: 4px 10px; font-size: 11px; font-weight: 700; }}
 QLabel[role='endpoint'] {{ background: #100c16; color: {MUTED}; border-left: 2px solid {CYAN}; border-radius: 2px; padding: 8px 10px; }}

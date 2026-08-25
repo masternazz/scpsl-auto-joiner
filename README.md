@@ -10,9 +10,9 @@ A Windows utility that keeps trying to join a configured SCP: Secret Laboratory 
 
 ## Download
 
-Download the latest Windows build from the [Releases page](https://github.com/masternazz/scpsl-auto-joiner/releases). Extract the ZIP, then run `SCP-SL-Auto-Joiner.exe`.
+Download the latest Windows build from the [Releases page](https://github.com/masternazz/scpsl-auto-joiner/releases). Choose the portable ZIP or the setup installer.
 
-The current release is a portable Windows x64 build. It does not install SCP: Secret Laboratory, Steam, or any third-party game files.
+The portable ZIP runs from any folder. The setup installer creates a per-user installation and optional shortcuts. Neither package installs SCP: Secret Laboratory, Steam, or any third-party game files.
 
 ## What it does
 
@@ -45,6 +45,8 @@ The app does not use OCR, read game memory, inject into the game, manipulate pac
 5. Select the saved server and choose **Start auto-join**.
 
 The app can launch SCP:SL automatically. On the first run, open **Calibration** if automatic controls do not match your game layout. Move the pointer over each named control and capture it without clicking the game. Calibration is stored per computer and should be repeated after changing display scaling, resolution, or the game window layout.
+
+The app checks the public GitHub Releases endpoint in the background at startup. If a newer release exists, the Auto-Join page shows a download link. A failed or offline check does not block the app.
 
 ## Settings
 
@@ -105,10 +107,10 @@ Install Python 3.13, then run:
 ```powershell
 py -3.13 -m pip install -r requirements.txt
 py -3.13 -m pytest -q
-./build_exe.ps1
+./build_release.ps1
 ```
 
-The packaged executable is created at `dist\SCP-SL-Auto-Joiner\SCP-SL-Auto-Joiner.exe`.
+`build_release.ps1` creates the portable executable folder and ZIP. Install [Inno Setup](https://jrsoftware.org/isinfo.php), then run the script again to also create the setup installer. The packaged executable is created at `dist\SCP-SL-Auto-Joiner\SCP-SL-Auto-Joiner.exe`.
 
 The repository also includes the source renderer for the README walkthrough at `assets\brand\render_demo.py`.
 
@@ -119,6 +121,7 @@ The repository also includes the source renderer for the README walkthrough at `
 - [Server name resolution research](docs/research/server-name-resolution.md)
 - [SCP:SL client and server browser research](docs/research/scpsl-client-server-browser.md)
 - [Background automation research](docs/background-automation-research.md)
+- [Security review](docs/security-review.md)
 
 ## License
 
