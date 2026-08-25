@@ -12,6 +12,7 @@ CONFIG_VERSION = 3
 DEFAULTS = {
     "config_version": CONFIG_VERSION,
     "navigation_mode": "automatic",
+    "connection_method": "automatic",
     # Qt 6 reports cursor positions in DPI-scaled logical pixels. Version 2
     # calibration records native Win32 physical pixels so the coordinates
     # match GetWindowRect/SendInput on 4K displays.

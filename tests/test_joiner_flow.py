@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -58,6 +59,60 @@ def test_automatic_run_lets_connect_argument_launch_game(monkeypatch):
     assert joiner.run("Canada #3") == "success"
     assert calls[0][0][0] is None
     assert calls[0][1]["launch_direct"] is True
+
+
+def test_warm_run_never_launches_a_second_game_process(monkeypatch):
+    cfg = {
+        "connection_method": "automatic",
+        "navigation_mode": "automatic",
+        "attempt_timeout_s": 1,
+        "retry_interval_s": 0,
+        "max_unclear": 3,
+        "max_attempts": 1,
+        "max_minutes": 1,
+        "click_points": {},
+    }
+    monkeypatch.setattr(joiner.config_mod, "load_config", lambda: cfg)
+    monkeypatch.setattr(joiner.resolver, "resolve", lambda _name: ("Canada #3", "1.2.3.4", 7778))
+    monkeypatch.setattr(joiner.logwatch, "LogWatcher", FakeWatcher)
+    monkeypatch.setattr(joiner.winput, "find_game_window", lambda _title: 123)
+    monkeypatch.setattr(joiner, "ensure_game_running", lambda *_args, **_kwargs: 123)
+    monkeypatch.setattr(joiner, "launch_game_connected", lambda *_args: (_ for _ in ()).throw(AssertionError("must not launch")))
+    calls = []
+    monkeypatch.setattr(joiner, "connect_once", lambda *args, **kwargs: calls.append(kwargs) or "success")
+    monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
+
+    assert joiner.run("Canada #3") == "success"
+    assert calls == [{"open_servers": True, "launch_direct": False, "stop_event": None}]
+
+
+def test_run_rejects_a_concurrent_call_without_starting_a_second_attempt(monkeypatch):
+    cfg = {"max_attempts": 1, "max_minutes": 1}
+    first_call_started = threading.Event()
+    release_first_call = threading.Event()
+    calls = []
+
+    monkeypatch.setattr(joiner.config_mod, "load_config", lambda: cfg)
+    monkeypatch.setattr(joiner.winput, "set_dpi_awareness", lambda: None)
+    monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
+
+    def resolve(_name):
+        calls.append("resolve")
+        if len(calls) == 1:
+            first_call_started.set()
+            release_first_call.wait(timeout=2)
+        return None
+
+    monkeypatch.setattr(joiner.resolver, "resolve", resolve)
+    worker = threading.Thread(target=joiner.run, args=("Canada #3",))
+    worker.start()
+    assert first_call_started.wait(timeout=2)
+
+    assert joiner.run("Canada #3") == "already_running"
+    release_first_call.set()
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert calls == ["resolve"]
 
 
 def test_find_game_executable_reads_secondary_steam_library(tmp_path):

@@ -2,15 +2,17 @@
 Direct Connect, then retry until the log says success/give-up/unclear."""
 import os
 import re
-import subprocess
+import threading
 import time
 import traceback
 import winreg
+from enum import Enum
 
 import config as config_mod
 import logwatch
 import notify
 import resolver
+import transport
 import winput
 from app_paths import app_dir
 
@@ -18,6 +20,7 @@ GAME_TITLE = "SCP: Secret Laboratory"
 STEAM_URI = "steam://rungameid/700330"
 APP_NAME = "SCP:SL Auto-Joiner"
 ERROR_LOG_PATH = os.path.join(app_dir(), "autojoiner.log")
+_RUN_LOCK = threading.Lock()
 
 # Normalized centers from the SCP:SL fullscreen/borderless layout. Keeping
 # these relative to the game window makes resolution and monitor position
@@ -35,6 +38,19 @@ LAYOUT_POINTS = {
 
 class JoinError(Exception):
     """Setup failure the caller should show and stop on."""
+
+
+class JoinState(str, Enum):
+    resolving = "resolving"
+    launching = "launching"
+    menu_ready = "menu_ready"
+    connecting = "connecting"
+    waiting = "waiting"
+    rejected_or_unknown = "rejected_or_unknown"
+    retrying = "retrying"
+    joined = "joined"
+    stopped = "stopped"
+    failed = "failed"
 
 
 def steam_root():
@@ -96,10 +112,7 @@ def launch_game_connected(ip, port):
     executable = find_game_executable()
     if not executable:
         raise JoinError("Could not find SCP:SL in your Steam libraries.")
-    subprocess.Popen(
-        [executable, "-steam", "+connect", f"{ip}:{port}"],
-        cwd=os.path.dirname(executable),
-    )
+    return transport.launch_direct(executable, ip, port)
 
 
 def wait_for_game_window(timeout=15, stop_event=None):
@@ -178,6 +191,47 @@ def prepare_direct_connect(hwnd, ip, port, open_servers=True, input_mode="backgr
         winput.replace_text(hwnd, address)
 
 
+class _ConnectionAttempt:
+    """Adapts one join attempt's UI and log operations for ``transport``."""
+
+    def __init__(self, hwnd, cfg, watcher, ip, port, open_servers, launch_direct, stop_event):
+        self.hwnd = hwnd
+        self.config = cfg
+        self.watcher = watcher
+        self.ip = ip
+        self.port = port
+        self.open_servers = open_servers
+        self.game_running = not launch_direct
+        self.stop_event = stop_event
+        self.method = None
+        self.connected = False
+
+    def start_direct(self):
+        launch_game_connected(self.ip, self.port)
+
+    def start_background(self):
+        prepare_direct_connect(self.hwnd, self.ip, self.port, open_servers=self.open_servers)
+        click_layout(self.hwnd, "connect")
+        winput.post_key_tap(self.hwnd, winput.VK_RETURN)
+
+    def start_foreground(self):
+        prepare_direct_connect(
+            self.hwnd, self.ip, self.port,
+            open_servers=self.open_servers, input_mode="foreground",
+        )
+        click_layout(self.hwnd, "connect", input_mode="foreground")
+        winput.foreground_key_tap(self.hwnd, winput.VK_RETURN)
+
+    def wait_for_connecting(self):
+        timeout = 90 if self.method == "direct" else 5
+        return self.watcher.wait_for_marker(
+            logwatch.CONNECTING_MARK, timeout, stop_event=self.stop_event,
+        )
+
+    def stopped(self):
+        return bool(self.stop_event and self.stop_event.is_set())
+
+
 def connect_once(hwnd, cfg, watcher, ip, port, open_servers=True,
                  launch_direct=False, stop_event=None):
     """Start one connection without global input, then read its result.
@@ -186,33 +240,16 @@ def connect_once(hwnd, cfg, watcher, ip, port, open_servers=True,
     Warm starts and retries post controls only to SCP:SL's window. Manual mode
     uses calibrated positions; automatic mode uses resolution-relative ones.
     """
-    if launch_direct:
-        launch_game_connected(ip, port)
-        marker_timeout = 90
-    else:
-        prepare_direct_connect(hwnd, ip, port, open_servers=open_servers)
-        click_layout(hwnd, "connect")
-        # Direct Connect opens SCP:SL's Game Info dialog.  Its default action
-        # is Join Game, so confirm it through the game window's own message
-        # queue.  Without this, the client can sit on the dialog forever and
-        # Player.log only contains the initial connection attempt.
-        winput.post_key_tap(hwnd, winput.VK_RETURN)
-        marker_timeout = 5
-    if not watcher.wait_for_marker(logwatch.CONNECTING_MARK, marker_timeout, stop_event=stop_event):
-        if stop_event and stop_event.is_set():
-            return "stopped"
-        if launch_direct:
+    attempt = _ConnectionAttempt(
+        hwnd, cfg, watcher, ip, port, open_servers, launch_direct, stop_event,
+    )
+    transport.connect_with_fallback(attempt)
+    if attempt.stopped():
+        return "stopped"
+    if not attempt.connected:
+        if attempt.method == "direct":
             raise JoinError("SCP:SL launched but did not start the direct connection.")
-        # Unity's current Input System ignores PostMessage mouse/keyboard
-        # input on some builds. Retry the same attempt with real input, while
-        # foreground_* restores the cursor and the user's previous app.
-        prepare_direct_connect(
-            hwnd, ip, port, open_servers=open_servers, input_mode="foreground"
-        )
-        winput.foreground_click(hwnd, *layout_point(hwnd, "connect"))
-        winput.foreground_key_tap(hwnd, winput.VK_RETURN)
-        if not watcher.wait_for_marker(logwatch.CONNECTING_MARK, marker_timeout, stop_event=stop_event):
-            raise JoinError("SCP:SL did not start connecting. Check the game window and calibration.")
+        raise JoinError("SCP:SL did not start connecting. Check the game window and calibration.")
     return watcher.wait_for_outcome(cfg["attempt_timeout_s"], stop_event=stop_event)
 
 
@@ -226,12 +263,24 @@ def dismiss_connection_overlay(hwnd):
     winput.foreground_key_tap(hwnd, winput.VK_ESCAPE)
 
 
+def wait_for_retry_delay(delay, stop_event=None):
+    """Wait between retries without delaying a requested stop."""
+    if stop_event:
+        return stop_event.wait(delay)
+    time.sleep(delay)
+    return False
+
+
 def run(server_name, on_status=None, stop_event=None):
     """Blocking — call from a background thread, not the UI thread. Returns
     a final status string; on_status(str), if given, gets progress updates."""
     def status(msg):
         if on_status:
             on_status(msg)
+
+    if not _RUN_LOCK.acquire(blocking=False):
+        status("An auto-join run is already active.")
+        return "already_running"
 
     watcher = None
     try:
@@ -249,7 +298,7 @@ def run(server_name, on_status=None, stop_event=None):
 
         watcher = logwatch.LogWatcher()
         hwnd = winput.find_game_window(GAME_TITLE)
-        cold_direct = not hwnd
+        cold_direct = transport.choose_method(cfg, game_running=bool(hwnd)) == "direct"
         if cold_direct:
             status(f"Launching SCP:SL and connecting to {name}...")
         else:
@@ -313,12 +362,9 @@ def run(server_name, on_status=None, stop_event=None):
                 delay = cfg["retry_interval_s"]
                 unit = "second" if delay == 1 else "seconds"
                 status(f"Server rejected/full-or-unknown. Retrying in {delay} {unit}...")
-                if stop_event:
-                    if stop_event.wait(delay):
-                        status("Stop requested.")
-                        return "stopped"
-                else:
-                    time.sleep(delay)
+                if wait_for_retry_delay(delay, stop_event):
+                    status("Stop requested.")
+                    return "stopped"
                 continue
 
             unclear += 1
@@ -326,12 +372,9 @@ def run(server_name, on_status=None, stop_event=None):
                 notify.notify(APP_NAME, f"Stuck on an unclear result ({outcome}) — check the game.")
                 return "unclear"
             winput.post_key_tap(hwnd, winput.VK_ESCAPE)
-            if stop_event:
-                if stop_event.wait(cfg["retry_interval_s"]):
-                    status("Stop requested.")
-                    return "stopped"
-            else:
-                time.sleep(cfg["retry_interval_s"])
+            if wait_for_retry_delay(cfg["retry_interval_s"], stop_event):
+                status("Stop requested.")
+                return "stopped"
 
         notify.notify(APP_NAME, f"Gave up trying to join {name}.")
         return "gave_up"
@@ -343,3 +386,4 @@ def run(server_name, on_status=None, stop_event=None):
     finally:
         if watcher is not None:
             watcher.close()
+        _RUN_LOCK.release()
