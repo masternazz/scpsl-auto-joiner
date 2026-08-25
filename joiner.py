@@ -31,12 +31,12 @@ class JoinError(Exception):
     """Setup failure the caller should show and stop on."""
 
 
-def ensure_game_running(watcher, launch_timeout=90):
+def ensure_game_running(watcher, launch_timeout=90, stop_event=None):
     hwnd = winput.find_game_window(GAME_TITLE)
     if hwnd:
         return hwnd
     os.startfile(STEAM_URI)
-    if not watcher.wait_for_marker(logwatch.MENU_MARK, launch_timeout):
+    if not watcher.wait_for_marker(logwatch.MENU_MARK, launch_timeout, stop_event=stop_event):
         raise JoinError("Timed out waiting for SCP:SL to reach the main menu.")
     hwnd = winput.find_game_window(GAME_TITLE)
     if not hwnd:
@@ -84,7 +84,7 @@ def click_layout(hwnd, name):
     return point
 
 
-def navigate_to_direct_connect(hwnd, _cfg):
+def navigate_to_direct_connect(hwnd):
     """Navigate using coordinates relative to the current game window."""
     click_layout(hwnd, "servers")
     time.sleep(0.8)
@@ -92,14 +92,19 @@ def navigate_to_direct_connect(hwnd, _cfg):
     time.sleep(0.8)
 
 
-def attempt_join(hwnd, cfg, ip, port, watcher):
-    navigate_to_direct_connect(hwnd, cfg)
+def prepare_direct_connect(hwnd, ip, port):
+    navigate_to_direct_connect(hwnd)
     click_layout(hwnd, "address_field")
-    winput.post_text(hwnd, f"{ip}:{port}")
+    winput.replace_text(hwnd, f"{ip}:{port}")
+
+
+def attempt_join(hwnd, cfg, watcher, stop_event=None):
     click_layout(hwnd, "connect")
-    if not watcher.wait_for_marker(logwatch.CONNECTING_MARK, 5):
+    if not watcher.wait_for_marker(logwatch.CONNECTING_MARK, 5, stop_event=stop_event):
+        if stop_event and stop_event.is_set():
+            return "stopped"
         raise JoinError("SCP:SL did not start connecting. Check the game layout.")
-    return watcher.wait_for_outcome(cfg["attempt_timeout_s"])
+    return watcher.wait_for_outcome(cfg["attempt_timeout_s"], stop_event=stop_event)
 
 
 def run(server_name, on_status=None, stop_event=None):
@@ -120,15 +125,16 @@ def run(server_name, on_status=None, stop_event=None):
 
         watcher = logwatch.LogWatcher()
         status("Making sure SCP:SL is running...")
-        already_running = bool(winput.find_game_window(GAME_TITLE))
         try:
-            hwnd = ensure_game_running(watcher)
+            hwnd = ensure_game_running(watcher, stop_event=stop_event)
         except JoinError as e:
+            if stop_event and stop_event.is_set():
+                return "stopped"
             notify.notify(APP_NAME, str(e))
             return "launch_failed"
 
         status("Finding SCP:SL controls automatically...")
-        navigate_to_direct_connect(hwnd, cfg)
+        prepare_direct_connect(hwnd, ip, port)
 
         unclear = 0
         attempts = 0
@@ -140,7 +146,7 @@ def run(server_name, on_status=None, stop_event=None):
             attempts += 1
             status(f"Attempt {attempts}: connecting to {name} ({ip}:{port})...")
             try:
-                outcome = attempt_join(hwnd, cfg, ip, port, watcher)
+                outcome = attempt_join(hwnd, cfg, watcher, stop_event)
             except JoinError as e:
                 notify.notify(APP_NAME, str(e))
                 return "unclear"
@@ -149,6 +155,10 @@ def run(server_name, on_status=None, stop_event=None):
                 notify.notify(APP_NAME, f"Joined {name}!")
                 return "success"
 
+            if outcome == "stopped":
+                status("Stop requested.")
+                return "stopped"
+
             if stop_event and stop_event.is_set():
                 status("Stop requested.")
                 return "stopped"
@@ -156,7 +166,12 @@ def run(server_name, on_status=None, stop_event=None):
             if outcome == "rejected":
                 unclear = 0
                 winput.post_key_tap(hwnd, winput.VK_ESCAPE)
-                time.sleep(cfg["retry_interval_s"])
+                if stop_event:
+                    if stop_event.wait(cfg["retry_interval_s"]):
+                        status("Stop requested.")
+                        return "stopped"
+                else:
+                    time.sleep(cfg["retry_interval_s"])
                 continue
 
             unclear += 1
@@ -164,7 +179,12 @@ def run(server_name, on_status=None, stop_event=None):
                 notify.notify(APP_NAME, f"Stuck on an unclear result ({outcome}) — check the game.")
                 return "unclear"
             winput.post_key_tap(hwnd, winput.VK_ESCAPE)
-            time.sleep(cfg["retry_interval_s"])
+            if stop_event:
+                if stop_event.wait(cfg["retry_interval_s"]):
+                    status("Stop requested.")
+                    return "stopped"
+            else:
+                time.sleep(cfg["retry_interval_s"])
 
         notify.notify(APP_NAME, f"Gave up trying to join {name}.")
         return "gave_up"

@@ -42,11 +42,13 @@ class LogWatcher:
         self.path = path or DEFAULT_LOG_PATH
         self._fh = open(self.path, "r", encoding="utf-8", errors="replace")
         self._fh.seek(0, os.SEEK_END)
+        self._pending = ""
 
     def read_new(self):
-        return self._fh.read()
+        text, self._pending = self._pending + self._fh.read(), ""
+        return text
 
-    def wait_for_outcome(self, timeout_s, poll_interval=0.25, stop_on_connecting=False):
+    def wait_for_outcome(self, timeout_s, poll_interval=0.25, stop_on_connecting=False, stop_event=None):
         """Accumulate new log text and classify it until a terminal outcome
         (success/rejected/cancelled), a timeout, or — if stop_on_connecting —
         the first sighting of "connecting" (used to confirm a click landed,
@@ -54,6 +56,8 @@ class LogWatcher:
         deadline = time.monotonic() + timeout_s
         buf = ""
         while time.monotonic() < deadline:
+            if stop_event and stop_event.is_set():
+                return "stopped"
             buf += self.read_new()
             result = classify_log_text(buf)
             if result in ("success", "rejected", "cancelled"):
@@ -64,22 +68,27 @@ class LogWatcher:
         buf += self.read_new()
         return classify_log_text(buf) or "timeout"
 
-    def wait_for_regex(self, pattern, timeout_s, poll_interval=0.25):
+    def wait_for_regex(self, pattern, timeout_s, poll_interval=0.25, stop_event=None):
         """Wait for a compiled regex to appear in new log text. Returns the
         match, or None on timeout."""
         deadline = time.monotonic() + timeout_s
         buf = ""
         while time.monotonic() < deadline:
+            if stop_event and stop_event.is_set():
+                return None
             buf += self.read_new()
             m = pattern.search(buf)
             if m:
+                # Preserve anything logged after the marker. A fast join can
+                # write Connecting and the final outcome in the same read.
+                self._pending = buf[m.end():]
                 return m
             time.sleep(poll_interval)
         return None
 
-    def wait_for_marker(self, marker, timeout_s, poll_interval=0.25):
+    def wait_for_marker(self, marker, timeout_s, poll_interval=0.25, stop_event=None):
         """Wait for a plain substring (e.g. MENU_MARK) to appear."""
-        return self.wait_for_regex(re.compile(re.escape(marker)), timeout_s, poll_interval) is not None
+        return self.wait_for_regex(re.compile(re.escape(marker)), timeout_s, poll_interval, stop_event) is not None
 
     def close(self):
         self._fh.close()

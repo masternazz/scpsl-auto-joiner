@@ -10,6 +10,9 @@ from ctypes import wintypes as _wintypes
 
 VK_ESCAPE = 0x1B
 VK_RETURN = 0x0D
+VK_BACK = 0x08
+VK_CONTROL = 0x11
+VK_A = 0x41
 
 _WM_KEYDOWN = 0x0100
 _WM_KEYUP = 0x0101
@@ -41,11 +44,6 @@ def set_dpi_awareness():
         return
     except Exception:
         pass
-
-
-def _is_game_window(title, class_name, target):
-    title = title.strip().lower()
-    return title == target.strip().lower() or (title == "scpsl" and class_name == "UnityWndClass")
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(2)
         return
@@ -55,6 +53,11 @@ def _is_game_window(title, class_name, target):
         ctypes.windll.user32.SetProcessDPIAware()
     except Exception:
         pass
+
+
+def _is_game_window(title, class_name, target):
+    title = title.strip().lower()
+    return title == target.strip().lower() or (title == "scpsl" and class_name == "UnityWndClass")
 
 
 def find_game_window(title_exact: str):
@@ -246,6 +249,28 @@ def post_key_tap(hwnd, vk: int, post_wait: float = 0.1):
             time.sleep(post_wait)
     except Exception:
         pass
+
+
+def post_hotkey(hwnd, modifier: int, vk: int, post_wait: float = 0.1):
+    """Send a two-key shortcut to the game window without stealing focus."""
+    if not hwnd:
+        return
+    try:
+        _post_key(hwnd, modifier, key_up=False)
+        _post_key(hwnd, vk, key_up=False)
+        _post_key(hwnd, vk, key_up=True)
+        _post_key(hwnd, modifier, key_up=True)
+        if post_wait:
+            time.sleep(post_wait)
+    except Exception:
+        pass
+
+
+def replace_text(hwnd, text: str):
+    """Replace the active field instead of appending to retained contents."""
+    post_hotkey(hwnd, VK_CONTROL, VK_A)
+    post_key_tap(hwnd, VK_BACK)
+    post_text(hwnd, text)
 
 
 def post_text(hwnd, text: str, post_wait: float = 0.02):

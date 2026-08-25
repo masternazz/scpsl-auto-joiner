@@ -172,6 +172,21 @@ def test_logwatcher_wait_for_marker_timeout(tmp_path):
     assert result is False
 
 
+def test_marker_wait_preserves_terminal_result_from_same_read(tmp_path):
+    """A fast server may log Connecting and success before the next poll."""
+    log_file = tmp_path / "test.log"
+    log_file.write_text("")
+    watcher = LogWatcher(path=str(log_file))
+
+    with log_file.open("a") as log:
+        log.write("Connecting to 1.2.3.4!\n")
+        log.write("Scene Manager: Loaded scene 'Facility'\n")
+
+    assert watcher.wait_for_marker("Connecting to", timeout_s=0.2, poll_interval=0.01)
+    assert watcher.wait_for_outcome(timeout_s=0.2, poll_interval=0.01) == "success"
+    watcher.close()
+
+
 def test_logwatcher_wait_for_regex_found(tmp_path):
     """wait_for_regex returns a match when pattern is found."""
     log_file = tmp_path / "test.log"

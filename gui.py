@@ -157,6 +157,7 @@ class MainWindow(QMainWindow):
         self.bridge.busy.connect(self.set_busy)
         self.bridge.saved.connect(self.server_saved)
         self.busy = False
+        self.stop_event = threading.Event()
         self.servers = {}
         self.setWindowTitle("SCP:SL Auto-Joiner")
         self.setMinimumSize(760, 560)
@@ -256,12 +257,16 @@ class MainWindow(QMainWindow):
         box.addWidget(self.server_box)
         self.endpoint_preview = label("No saved server selected.", "helper")
         box.addWidget(self.endpoint_preview)
-        actions = QHBoxLayout(); actions.setSpacing(10)
         self.join_button = QPushButton("Start auto-join"); self.join_button.setProperty("kind", "primary")
         self.remember_button = QPushButton("Remember a server")
+        self.stop_button = QPushButton("Stop")
+        self.stop_button.setEnabled(False)
         self.join_button.clicked.connect(self.join); self.remember_button.clicked.connect(self.remember)
-        actions.addWidget(self.join_button); actions.addWidget(self.remember_button); actions.addStretch()
-        box.addLayout(actions)
+        self.stop_button.clicked.connect(self.stop_join)
+        box.addWidget(self.join_button)
+        secondary_actions = QHBoxLayout(); secondary_actions.setSpacing(10)
+        secondary_actions.addWidget(self.remember_button); secondary_actions.addWidget(self.stop_button); secondary_actions.addStretch()
+        box.addLayout(secondary_actions)
         box.addWidget(label("Remember a server watches your next normal connection, detects its IP and port, then asks you to give it a friendly name.", "helper"))
         layout.addWidget(destination)
         activity, activity_box = self.card()
@@ -332,16 +337,24 @@ class MainWindow(QMainWindow):
 
     def set_busy(self, busy):
         self.busy = busy; self.join_button.setEnabled(not busy); self.remember_button.setEnabled(not busy); self.progress.setVisible(busy); self.feed.setText("RUNNING" if busy else "IDLE")
+        if not busy:
+            self.stop_button.setEnabled(False)
 
     def join(self):
         name = self.server_box.currentText().strip()
         if not name or self.busy: return
-        self.set_busy(True); threading.Thread(target=self.run_join, args=(name,), daemon=True).start()
+        self.stop_event.clear(); self.set_busy(True); self.stop_button.setEnabled(True)
+        threading.Thread(target=self.run_join, args=(name,), daemon=True).start()
 
     def run_join(self, name):
-        result = joiner.run(name, on_status=self.bridge.status.emit)
-        messages = {"success": "Joined successfully.", "gave_up": "Stopped after reaching the retry limit.", "unclear": "Stopped because the game returned an unclear result.", "not_found": "That server is not saved yet.", "launch_failed": "SCP:SL could not be started."}
+        result = joiner.run(name, on_status=self.bridge.status.emit, stop_event=self.stop_event)
+        messages = {"success": "Joined successfully.", "stopped": "Auto-join stopped.", "gave_up": "Stopped after reaching the retry limit.", "unclear": "Stopped because the game returned an unclear result.", "not_found": "That server is not saved yet.", "launch_failed": "SCP:SL could not be started."}
         self.bridge.status.emit(messages.get(result, result)); self.bridge.busy.emit(False)
+
+    def stop_join(self):
+        self.stop_event.set()
+        self.stop_button.setEnabled(False)
+        self.bridge.status.emit("Stopping auto-join...")
 
     def remember(self):
         if self.busy: return
