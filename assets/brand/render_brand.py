@@ -77,9 +77,10 @@ def workflow_frame(state, frame, width=960, height=600):
     draw.text((px(252), px(101)), "Keeps trying until the server accepts the connection.", font=font(px(15)), fill=MUTED)
     draw.rounded_rectangle((px(252), px(155), px(910), px(315)), radius=px(10), fill="#1d1728", outline="#3a2d4b", width=2 * scale)
     draw.text((px(280), px(181)), "SAVED SERVER", font=font(px(11), True), fill=PURPLE)
-    draw.text((px(280), px(214)), "Masternazz Private", font=font(px(22), True), fill=WHITE)
-    draw.text((px(280), px(260)), "scpsl.play.masternazz.com:7780", font=font(px(14)), fill=MUTED)
+    draw.text((px(280), px(214)), "Northwood Official #1", font=font(px(22), True), fill=WHITE)
+    draw.text((px(280), px(260)), "example.server:7777", font=font(px(14)), fill=MUTED)
     labels = ["Select", "Launch", "Connect", "Full", "Retry", "Joined"]
+    progress = min(5.0, state + (frame / 3.0 if state < 5 else 0.0))
     for i, label_text in enumerate(labels):
         x = 280 + i * 100
         color = PURPLE if i <= state else "#3a2d4b"
@@ -87,12 +88,14 @@ def workflow_frame(state, frame, width=960, height=600):
         if i < len(labels) - 1:
             draw.line((px(x + 18), px(399), px(x + 100), px(399)), fill="#3a2d4b", width=3 * scale)
         draw.text((px(x - 8), px(430)), label_text, font=font(px(11), True), fill=WHITE if i <= state else SUBTLE)
+    pulse_x = 280 + min(5.0, progress) * 100
+    draw.ellipse((px(pulse_x - 7), px(393), px(pulse_x + 25), px(425)), outline=PURPLE, width=3 * scale)
     messages = [
         ("Ready", "Choose a saved server and start.", PURPLE),
-        ("Launching SCP:SL", "Starting the game with the saved endpoint.", PURPLE),
+        ("Launching SCP:SL", "Starting the game in the background.", PURPLE),
         ("Connecting", "Opening Direct Connect and submitting the address.", PURPLE),
-        ("Server full", "No slot yet. Retrying in 2 seconds.", AMBER),
-        ("Retrying", "Checking the server again.", PURPLE),
+        ("Server full", f"Retrying in {max(1, 2 - min(frame, 1))} seconds.", AMBER),
+        ("Retrying", "Trying again after the two-second delay.", PURPLE),
         ("Joined", "Connection accepted.", GREEN),
     ]
     title, detail, color = messages[state]
