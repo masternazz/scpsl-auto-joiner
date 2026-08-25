@@ -5,8 +5,13 @@ in gui.py, not hand-edited."""
 import difflib
 import json
 import os
+import re
+import socket
 
 from app_paths import app_dir
+
+A2S_INFO_QUERY = b"\xff\xff\xff\xffTSource Engine Query\x00"
+RICH_TEXT_TAG_RE = re.compile(r"<[^>]{1,100}>")
 
 SERVERS_PATH = os.path.join(app_dir(), "servers.json")
 
@@ -30,6 +35,33 @@ def remember_server(name, ip, port, path=None):
     servers = load_servers(path)
     servers[name] = {"ip": ip, "port": int(port)}
     save_servers(servers, path)
+
+
+def _parse_a2s_info(packet):
+    """Return the server name from a single-packet A2S_INFO response."""
+    if len(packet) < 7 or packet[:5] != b"\xff\xff\xff\xffI":
+        return None
+    name = packet[6:].split(b"\x00", 1)[0].decode("utf-8", errors="replace").strip()
+    name = " ".join(RICH_TEXT_TAG_RE.sub("", name).split())
+    return name or None
+
+
+def query_server_name(ip, port, timeout=1.5):
+    """Ask the game server for its public Steam-query name."""
+    address = (str(ip), int(port))
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(timeout)
+    try:
+        sock.sendto(A2S_INFO_QUERY, address)
+        packet, _ = sock.recvfrom(4096)
+        if packet[:5] == b"\xff\xff\xff\xffA" and len(packet) >= 9:
+            sock.sendto(A2S_INFO_QUERY + packet[5:9], address)
+            packet, _ = sock.recvfrom(4096)
+        return _parse_a2s_info(packet)
+    except (OSError, ValueError):
+        return None
+    finally:
+        sock.close()
 
 
 def resolve(query, path=None):

@@ -41,6 +41,11 @@ def set_dpi_awareness():
         return
     except Exception:
         pass
+
+
+def _is_game_window(title, class_name, target):
+    title = title.strip().lower()
+    return title == target.strip().lower() or (title == "scpsl" and class_name == "UnityWndClass")
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(2)
         return
@@ -53,8 +58,12 @@ def set_dpi_awareness():
 
 
 def find_game_window(title_exact: str):
-    """Visible top-level window whose title matches `title_exact` exactly
-    (case-insensitive, trimmed), or None."""
+    """Find SCP:SL's visible top-level window.
+
+    Borderless/fullscreen builds commonly expose ``SCPSL`` as the window
+    title instead of the game's display name, so accept that Unity window
+    as well as the requested title.
+    """
     try:
         u32 = ctypes.windll.user32
         target = title_exact.strip().lower()
@@ -70,7 +79,9 @@ def find_game_window(title_exact: str):
                     return True
                 buf = ctypes.create_unicode_buffer(n + 1)
                 u32.GetWindowTextW(hwnd, buf, n + 1)
-                if buf.value.strip().lower() == target:
+                class_buf = ctypes.create_unicode_buffer(256)
+                u32.GetClassNameW(hwnd, class_buf, len(class_buf))
+                if _is_game_window(buf.value, class_buf.value, target):
                     matches.append(hwnd)
             except Exception:
                 pass

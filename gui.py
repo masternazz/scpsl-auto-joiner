@@ -35,7 +35,7 @@ RED = "#ef8585"
 class Bridge(QObject):
     status = Signal(str)
     busy = Signal(bool)
-    saved = Signal(str)
+    saved = Signal(str, str)
 
 
 def label(text, style="body"):
@@ -353,15 +353,19 @@ class MainWindow(QMainWindow):
             watcher = logwatch.LogWatcher()
             try: match = watcher.wait_for_regex(logwatch.CONNECTING_IP_RE, 120)
             finally: watcher.close()
-            if match: self.bridge.saved.emit(f"{match.group(1)}:{match.group(2)}")
+            if match:
+                ip, port = match.group(1), int(match.group(2))
+                detected_name = resolver.query_server_name(ip, port) or ""
+                self.bridge.saved.emit(f"{ip}:{port}", detected_name)
             else: self.bridge.status.emit("Timed out waiting for a connection attempt."); self.bridge.busy.emit(False)
         except Exception:
             self.bridge.status.emit("Could not watch the SCP:SL log. Is the game installed?"); self.bridge.busy.emit(False)
 
-    def server_saved(self, endpoint):
+    def server_saved(self, endpoint, detected_name):
         ip, port = endpoint.rsplit(":", 1)
-        suggested = f"Saved server {len(self.servers) + 1}"
-        name, accepted = QInputDialog.getText(self, "Name this server", f"Detected endpoint: {endpoint}\n\nEnter a friendly name:", QLineEdit.Normal, suggested)
+        suggested = detected_name or f"Saved server {len(self.servers) + 1}"
+        details = f"Detected server: {detected_name}\nEndpoint: {endpoint}" if detected_name else f"Detected endpoint: {endpoint}"
+        name, accepted = QInputDialog.getText(self, "Name this server", f"{details}\n\nConfirm or edit the friendly name:", QLineEdit.Normal, suggested)
         name = name.strip()
         if not accepted or not name:
             self.bridge.status.emit(f"Detected {endpoint}, but it was not saved.")

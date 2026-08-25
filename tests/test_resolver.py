@@ -6,6 +6,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import resolver as resolver_mod
 
 
+def test_parse_a2s_info_name():
+    packet = b"\xff\xff\xff\xffI\x11Northwood Official Server - Canada #2\x00Facility\x00"
+    assert resolver_mod._parse_a2s_info(packet) == "Northwood Official Server - Canada #2"
+
+
+def test_parse_a2s_info_strips_rich_text_tags():
+    packet = b"\xff\xff\xff\xffI\x11<color=red>King's</color>  Playground\x00Facility\x00"
+    assert resolver_mod._parse_a2s_info(packet) == "King's Playground"
+
+
+def test_parse_a2s_info_rejects_unrelated_packet():
+    assert resolver_mod._parse_a2s_info(b"not an info response") is None
+
+
 def test_resolve_returns_none_when_no_servers(tmp_path):
     path = str(tmp_path / "servers.json")
     assert resolver_mod.resolve("canada", path) is None
