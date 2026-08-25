@@ -68,7 +68,17 @@ def layout_point(hwnd, name):
 
 
 def click_layout(hwnd, name):
-    point = layout_point(hwnd, name)
+    cfg = config_mod.load_config()
+    manual_names = {
+        "servers": "servers_tab",
+        "direct_connect": "direct_connect",
+        "address_field": "ip_field",
+        "connect": "connect_button",
+    }
+    if cfg.get("navigation_mode") == "manual" and config_mod.calibrated(cfg) and name in manual_names:
+        point = tuple(cfg["click_points"][manual_names[name]])
+    else:
+        point = layout_point(hwnd, name)
     winput.focus_window(hwnd)
     winput.mouse_click(*point)
     return point

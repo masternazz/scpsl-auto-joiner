@@ -9,6 +9,7 @@ from app_paths import app_dir
 CONFIG_PATH = os.path.join(app_dir(), "config.json")
 
 DEFAULTS = {
+    "navigation_mode": "automatic",
     "retry_interval_s": 6,
     "attempt_timeout_s": 20,
     "max_unclear": 3,
