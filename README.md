@@ -1,31 +1,30 @@
-![SCP:SL // Containment](assets/generated/github-banner-purple.png)
+# SCP:SL Auto-Joiner
 
-# SCP:SL // CONTAINMENT
+Windows helper for retrying SCP: Secret Laboratory server joins.
 
-A quiet Windows utility that keeps trying to join a saved SCP: Secret Laboratory server while you do something else.
+![SCP:SL Auto-Joiner](assets/generated/github-banner-purple.png)
 
-## What it does
+## Download
 
-- Resolves and remembers friendly server names instead of forcing you to identify servers by IP.
-- Starts SCP:SL directly when it is closed and navigates the client when it is already open.
-- Detects accepted and rejected connections from SCP:SL's `Player.log`, including full-server rejection.
-- Retries rejected attempts after a configurable delay; `0` means unlimited attempts or runtime.
-- Uses resolution-scaled controls for different monitors, with optional per-computer calibration.
-- Stores server data and settings in the normal Windows AppData location.
-- Keeps interaction scoped to the SCP:SL window; a short compatibility fallback is used only when the game's Unity input layer ignores background messages.
+Get the latest Windows build from [Releases](https://github.com/masternazz/scpsl-auto-joiner/releases). Extract the ZIP and run `SCP-SL-Auto-Joiner.exe`.
 
-The tool does not read or modify game memory, inject into the client, or require OCR for ordinary operation.
+## Use
 
-## Quick start
+1. Start the app.
+2. Add a server, or select one you have already saved.
+3. Press **Start auto-join**.
 
-1. Download the packaged Windows build from the Releases page.
-2. Launch `SCP-SL-Auto-Joiner.exe`.
-3. Add or select a server, then start auto-join.
-4. Open Calibration from the sidebar only if automatic navigation misses a control after a display or game-layout change.
+The app looks up a server's display name when it can, saves the endpoint locally, and retries a full or rejected server after the delay in Settings. Set attempts or runtime to `0` to keep trying until you stop it.
 
-The executable name remains stable for straightforward updates; the product UI and icon use the new Containment identity.
+Automatic navigation scales to the current SCP:SL window. Calibration is available for unusual layouts or display setups. The game can be left running while the app waits.
 
-## Development
+## Data and input
+
+Settings and saved servers are stored in the user's AppData folder. Join results are read from SCP:SL's `Player.log`. The normal path does not use OCR, memory reading, or game injection.
+
+Most controls are sent to the game window. Some SCP:SL Unity builds ignore background input; in that case the app briefly uses a compatibility click and restores the previous foreground window and cursor position.
+
+## Build and test
 
 ```powershell
 py -3.13 -m pip install -r requirements.txt
@@ -33,4 +32,4 @@ py -3.13 -m pytest -q
 ./build_exe.ps1
 ```
 
-This is a personal desktop utility for Windows, Steam, and SCP:SL. Keep server credentials and local configuration out of source control.
+This is a small personal utility for Windows, Steam, and SCP:SL.
