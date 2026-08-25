@@ -62,7 +62,7 @@ class CalibrationDialog(QDialog):
         layout.setContentsMargins(30, 28, 30, 28)
         layout.setSpacing(14)
         layout.addWidget(label("Calibrate controls", "title"))
-        layout.addWidget(label("Optional manual fallback for this computer. Keep SCP:SL visible, hover the named control, and capture without clicking the game."))
+        layout.addWidget(label("Optional manual fallback for this computer. Click Start first; the app hides for 3 seconds while you move your pointer onto the named SCP:SL control."))
         self.progress = QProgressBar()
         self.progress.setRange(0, len(self.steps))
         self.progress.setTextVisible(False)
@@ -75,7 +75,7 @@ class CalibrationDialog(QDialog):
         layout.addWidget(self.countdown)
         layout.addStretch()
         row = QHBoxLayout()
-        self.capture_button = QPushButton("Capture current mouse position")
+        self.capture_button = QPushButton("Start 3-second capture")
         self.capture_button.setProperty("kind", "primary")
         self.capture_button.clicked.connect(self.capture)
         row.addWidget(self.capture_button)
@@ -96,31 +96,42 @@ class CalibrationDialog(QDialog):
         _, title = self.steps[self.index]
         total = len(self.steps)
         self.step_label.setText(f"Step {self.index + 1} of {total}  ·  {title}")
-        self.instructions.setText(f"Hover your mouse over SCP:SL's {title}, then click Capture. Do not click the game itself.")
+        self.instructions.setText(
+            f"Click Start first. The app will hide for 3 seconds; then move your mouse "
+            f"onto SCP:SL's {title} and hold it still. Do not click inside the game."
+        )
         self.progress.setValue(self.index)
 
     def capture(self):
         if self.index >= len(self.steps) or not self.capture_button.isEnabled():
             return
         self.capture_button.setEnabled(False)
-        self.instructions.setText("Place your cursor over the named SCP:SL control. The app is hidden while the position is captured.")
+        self.capture_button.setText("Countdown running...")
+        self.instructions.setText("After this window hides, move onto the named game control and hold still until it returns.")
         self._countdown(3)
 
     def _countdown(self, seconds):
         if seconds:
             self.countdown.setText(f"Capturing in {seconds}…")
-            QTimer.singleShot(1000, lambda: self._countdown(seconds - 1))
             if seconds == 3:
+                self.app.hide()
                 self.hide()
+            QTimer.singleShot(1000, lambda: self._countdown(seconds - 1))
         else:
             point = QCursor.pos()
-            name, _ = self.steps[self.index]
+            name, title = self.steps[self.index]
+            captured_step = self.index + 1
             self.cfg["click_points"][name] = [point.x(), point.y()]
+            self.app.show()
             self.show()
-            self.countdown.clear()
+            self.raise_()
+            self.activateWindow()
+            self.capture_button.setText("Start 3-second capture")
             self.capture_button.setEnabled(True)
             self.index += 1
             self.show_step()
+            if self.index < len(self.steps):
+                self.countdown.setText(f"Captured step {captured_step}: {title} at ({point.x()}, {point.y()}).")
 
 
 class HelpDialog(QDialog):
@@ -138,7 +149,7 @@ class HelpDialog(QDialog):
             "1. Automatic mode\n\n"
             "By default, the app scales clicks to SCP:SL's current window. Different resolutions and borderless fullscreen layouts normally need no calibration.\n\n"
             "2. Optional calibration\n\n"
-            "If automatic navigation misses a control, use Calibrate controls. Capture Servers, Direct Connect, the IP/Hostname field, and Connect. The fallback is saved only on this computer.\n\n"
+            "If automatic navigation misses a control, use Calibrate controls. Click Start capture first; while the app is hidden, move onto the requested game control and hold still. You never click inside SCP:SL. The fallback is saved only on this computer.\n\n"
             "3. Remember a server\n\n"
             "Join normally and click Remember a server. The app reads the IP and port from Player.log and saves the endpoint.\n\n"
             "4. Start auto-join\n\n"
@@ -284,7 +295,7 @@ class MainWindow(QMainWindow):
         card, box = self.card()
         box.addWidget(label("CONTROL SETUP", "eyebrow"))
         box.addWidget(label("Calibrate this computer", "section"))
-        box.addWidget(label("Capture Servers, Direct Connect, the IP/Hostname field, and Connect. This is stored locally and can be repeated after changing displays.", "body"))
+        box.addWidget(label("For each control, click Start capture first. The app hides for 3 seconds so you can move your pointer onto Servers, Direct Connect, the IP/Hostname field, or Connect. You never click the game during capture.", "body"))
         row = QHBoxLayout(); self.calibration_status = label("Automatic window-relative controls enabled.", "warning"); row.addWidget(self.calibration_status); row.addStretch(); box.addLayout(row)
         button = QPushButton("Open calibration")
         button.setProperty("kind", "primary"); button.clicked.connect(self.calibrate); box.addWidget(button)
@@ -297,7 +308,7 @@ class MainWindow(QMainWindow):
         self.heading(layout, "FIELD MANUAL  /  REFERENCE", "How it works", "A plain-language guide to every button and what the automation is doing.")
         for number, title, text in [
             ("01", "Automatic first", "Clicks scale to the current SCP:SL window, so different resolutions and borderless fullscreen layouts normally need no setup."),
-            ("02", "Optional calibration", "Capture four controls only if automatic navigation misses. The manual fallback is saved locally."),
+            ("02", "Optional calibration", "Click Start capture first. While the app is hidden for 3 seconds, move your pointer onto the requested control and hold still. Repeat for four controls; the manual fallback is saved locally."),
             ("03", "Remember a server", "Start the watcher and join normally. After Player.log reveals the IP and port, a popup asks you for a friendly name."),
             ("04", "What it does not do", "No memory reading, packet manipulation, OCR, or anti-cheat bypass. It sends normal Windows input and reads Player.log."),
         ]:
