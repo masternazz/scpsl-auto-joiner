@@ -58,7 +58,7 @@ def banner(width=1600, height=500):
     return image.resize((width, height), Image.Resampling.LANCZOS)
 
 
-def workflow_frame(state, frame, width=960, height=540):
+def workflow_frame(state, frame, width=960, height=600):
     scale = 2
     image = Image.new("RGB", (width * scale, height * scale), BG)
     draw = ImageDraw.Draw(image)
@@ -71,22 +71,22 @@ def workflow_frame(state, frame, width=960, height=540):
         active = y == 150
         draw.rounded_rectangle((px(22), px(y - 12), px(188), px(y + 28)), radius=px(6), fill="#282038" if active else BG)
         draw.text((px(36), px(y)), text, font=font(px(15)), fill=WHITE if active else MUTED)
-    draw.text((px(32), px(472)), "LOCAL DESKTOP TOOL", font=font(px(10), True), fill=PURPLE)
-    draw.text((px(32), px(492)), "Server data stays local", font=font(px(11)), fill=MUTED)
-    draw.text((px(252), px(42)), "Auto-Join", font=font(px(31), True), fill=WHITE)
-    draw.text((px(252), px(88)), "Keeps trying until the server accepts the connection.", font=font(px(15)), fill=MUTED)
-    draw.rounded_rectangle((px(252), px(140), px(910), px(282)), radius=px(10), fill="#1d1728", outline="#3a2d4b", width=2 * scale)
-    draw.text((px(280), px(166)), "SAVED SERVER", font=font(px(11), True), fill=PURPLE)
-    draw.text((px(280), px(194)), "Masternazz Private", font=font(px(22), True), fill=WHITE)
-    draw.text((px(280), px(232)), "scpsl.play.masternazz.com:7780", font=font(px(14)), fill=MUTED)
+    draw.text((px(32), px(530)), "LOCAL DESKTOP TOOL", font=font(px(10), True), fill=PURPLE)
+    draw.text((px(32), px(552)), "Server data stays local", font=font(px(11)), fill=MUTED)
+    draw.text((px(252), px(52)), "Auto-Join", font=font(px(31), True), fill=WHITE)
+    draw.text((px(252), px(101)), "Keeps trying until the server accepts the connection.", font=font(px(15)), fill=MUTED)
+    draw.rounded_rectangle((px(252), px(155), px(910), px(315)), radius=px(10), fill="#1d1728", outline="#3a2d4b", width=2 * scale)
+    draw.text((px(280), px(181)), "SAVED SERVER", font=font(px(11), True), fill=PURPLE)
+    draw.text((px(280), px(214)), "Masternazz Private", font=font(px(22), True), fill=WHITE)
+    draw.text((px(280), px(260)), "scpsl.play.masternazz.com:7780", font=font(px(14)), fill=MUTED)
     labels = ["Select", "Launch", "Connect", "Full", "Retry", "Joined"]
     for i, label_text in enumerate(labels):
         x = 280 + i * 100
         color = PURPLE if i <= state else "#3a2d4b"
-        draw.ellipse((px(x), px(344), px(x + 18), px(362)), fill=color)
+        draw.ellipse((px(x), px(390), px(x + 18), px(408)), fill=color)
         if i < len(labels) - 1:
-            draw.line((px(x + 18), px(353), px(x + 100), px(353)), fill="#3a2d4b", width=3 * scale)
-        draw.text((px(x - 8), px(378)), label_text, font=font(px(11), True), fill=WHITE if i <= state else SUBTLE)
+            draw.line((px(x + 18), px(399), px(x + 100), px(399)), fill="#3a2d4b", width=3 * scale)
+        draw.text((px(x - 8), px(430)), label_text, font=font(px(11), True), fill=WHITE if i <= state else SUBTLE)
     messages = [
         ("Ready", "Choose a saved server and start.", PURPLE),
         ("Launching SCP:SL", "Starting the game with the saved endpoint.", PURPLE),
@@ -96,10 +96,10 @@ def workflow_frame(state, frame, width=960, height=540):
         ("Joined", "Connection accepted.", GREEN),
     ]
     title, detail, color = messages[state]
-    draw.rounded_rectangle((px(252), px(425), px(910), px(490)), radius=px(8), fill="#15111d", outline=color, width=2 * scale)
-    draw.ellipse((px(274), px(448), px(286), px(460)), fill=color)
-    draw.text((px(302), px(438)), title, font=font(px(16), True), fill=WHITE)
-    draw.text((px(430), px(440)), detail, font=font(px(13)), fill=MUTED)
+    draw.rounded_rectangle((px(252), px(485), px(910), px(565)), radius=px(8), fill="#15111d", outline=color, width=2 * scale)
+    draw.ellipse((px(274), px(519), px(286), px(531)), fill=color)
+    draw.text((px(302), px(502)), title, font=font(px(16), True), fill=WHITE)
+    draw.text((px(430), px(505)), detail, font=font(px(13)), fill=MUTED)
     return image.resize((width, height), Image.Resampling.LANCZOS)
 
 
