@@ -6,7 +6,7 @@ from PySide6.QtCore import QObject, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QCursor, QIcon, QPalette
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDialogButtonBox, QFrame, QGridLayout,
-    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
+    QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
     QProgressBar, QScrollArea, QSizePolicy, QSpacerItem, QStackedWidget,
     QTextEdit, QVBoxLayout, QWidget,
 )
@@ -252,14 +252,17 @@ class MainWindow(QMainWindow):
         box.addWidget(label("SERVER NAME", "fieldLabel"))
         self.server_box = QComboBox(); self.server_box.setEditable(True); self.server_box.setInsertPolicy(QComboBox.NoInsert); self.server_box.setPlaceholderText("Start typing a saved server…")
         self.server_box.lineEdit().textEdited.connect(self.filter_servers)
+        self.server_box.currentTextChanged.connect(self.update_endpoint_preview)
         box.addWidget(self.server_box)
+        self.endpoint_preview = label("No saved server selected.", "helper")
+        box.addWidget(self.endpoint_preview)
         actions = QHBoxLayout(); actions.setSpacing(10)
         self.join_button = QPushButton("Start auto-join"); self.join_button.setProperty("kind", "primary")
         self.remember_button = QPushButton("Remember a server")
         self.join_button.clicked.connect(self.join); self.remember_button.clicked.connect(self.remember)
         actions.addWidget(self.join_button); actions.addWidget(self.remember_button); actions.addStretch()
         box.addLayout(actions)
-        box.addWidget(label("To remember a server, start the watcher and join normally in SCP:SL. The endpoint is detected automatically.", "helper"))
+        box.addWidget(label("Remember a server watches your next normal connection, detects its IP and port, then asks you to give it a friendly name.", "helper"))
         layout.addWidget(destination)
         activity, activity_box = self.card()
         row = QHBoxLayout(); row.addWidget(label("LIVE FEED", "eyebrow")); row.addStretch(); self.feed = label("IDLE", "pill"); row.addWidget(self.feed); activity_box.addLayout(row)
@@ -277,7 +280,7 @@ class MainWindow(QMainWindow):
         box.addWidget(label("CONTROL SETUP", "eyebrow"))
         box.addWidget(label("Calibrate this computer", "section"))
         box.addWidget(label("Capture Servers, Direct Connect, the IP/Hostname field, and Connect. This is stored locally and can be repeated after changing displays.", "body"))
-        row = QHBoxLayout(); self.calibration_status = label("Automatic control detection enabled.", "warning"); row.addWidget(self.calibration_status); row.addStretch(); box.addLayout(row)
+        row = QHBoxLayout(); self.calibration_status = label("Automatic window-relative controls enabled.", "warning"); row.addWidget(self.calibration_status); row.addStretch(); box.addLayout(row)
         button = QPushButton("Open calibration")
         button.setProperty("kind", "primary"); button.clicked.connect(self.calibrate); box.addWidget(button)
         layout.addWidget(card)
@@ -290,7 +293,7 @@ class MainWindow(QMainWindow):
         for number, title, text in [
             ("01", "Automatic first", "Clicks scale to the current SCP:SL window, so different resolutions and borderless fullscreen layouts normally need no setup."),
             ("02", "Optional calibration", "Capture four controls only if automatic navigation misses. The manual fallback is saved locally."),
-            ("03", "Remember a server", "Start the watcher, join normally, and the detected IP and port are saved from Player.log."),
+            ("03", "Remember a server", "Start the watcher and join normally. After Player.log reveals the IP and port, a popup asks you for a friendly name."),
             ("04", "What it does not do", "No memory reading, packet manipulation, OCR, or anti-cheat bypass. It sends normal Windows input and reads Player.log."),
         ]:
             card, box = self.card(); box.addWidget(label(number, "number")); box.addWidget(label(title, "section")); box.addWidget(label(text, "body")); layout.addWidget(card)
@@ -303,15 +306,26 @@ class MainWindow(QMainWindow):
             button.setProperty("active", active); button.style().unpolish(button); button.style().polish(button)
 
     def refresh(self):
+        current = self.server_box.currentText()
         self.servers = resolver.load_servers()
         self.server_box.clear(); self.server_box.addItems(sorted(self.servers))
+        if current in self.servers:
+            self.server_box.setCurrentText(current)
+        self.update_endpoint_preview(self.server_box.currentText())
         cfg = config_mod.load_config(); manual = cfg.get("navigation_mode") == "manual" and config_mod.calibrated(cfg)
-        text = "Manual calibration saved and active." if manual else "Automatic control detection enabled."
+        text = "Manual calibration saved and active." if manual else "Automatic window-relative controls enabled."
         self.calibration_status.setText(text)
 
     def filter_servers(self, query):
         current = self.server_box.currentText()
         self.server_box.clear(); self.server_box.addItems(sorted(name for name in self.servers if query.lower() in name.lower()) or sorted(self.servers)); self.server_box.setEditText(current)
+
+    def update_endpoint_preview(self, name):
+        entry = self.servers.get(name)
+        if entry:
+            self.endpoint_preview.setText(f"Will join {entry['ip']}:{entry['port']}")
+        else:
+            self.endpoint_preview.setText("Choose a saved server from the list.")
 
     def status_text(self, text):
         self.status.setText(text)
@@ -344,8 +358,20 @@ class MainWindow(QMainWindow):
         except Exception:
             self.bridge.status.emit("Could not watch the SCP:SL log. Is the game installed?"); self.bridge.busy.emit(False)
 
-    def server_saved(self, name):
-        ip, port = name.rsplit(":", 1); resolver.remember_server(name, ip, int(port)); self.refresh(); self.server_box.setEditText(name); self.bridge.status.emit(f"Saved {name}."); self.bridge.busy.emit(False)
+    def server_saved(self, endpoint):
+        ip, port = endpoint.rsplit(":", 1)
+        suggested = f"Saved server {len(self.servers) + 1}"
+        name, accepted = QInputDialog.getText(self, "Name this server", f"Detected endpoint: {endpoint}\n\nEnter a friendly name:", QLineEdit.Normal, suggested)
+        name = name.strip()
+        if not accepted or not name:
+            self.bridge.status.emit(f"Detected {endpoint}, but it was not saved.")
+            self.bridge.busy.emit(False)
+            return
+        resolver.remember_server(name, ip, int(port))
+        self.refresh()
+        self.server_box.setCurrentText(name)
+        self.bridge.status.emit(f"Saved {name} ({endpoint}).")
+        self.bridge.busy.emit(False)
 
     def calibrate(self):
         CalibrationDialog(self).exec()

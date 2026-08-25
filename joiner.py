@@ -7,7 +7,6 @@ import traceback
 import config as config_mod
 import logwatch
 import notify
-import ocr
 import resolver
 import winput
 from app_paths import app_dir
@@ -85,33 +84,19 @@ def click_layout(hwnd, name):
     return point
 
 
-def click_control(hwnd, name, phrases):
-    """Prefer the visible OCR label, then use the resolution-independent fallback."""
-    rect = winput.get_window_rect(hwnd)
-    words = ocr.read_window(hwnd)
-    point = ocr.find_center(words, phrases)
-    if point and rect:
-        left, top, _, _ = rect
-        point = left + point[0], top + point[1]
-        winput.focus_window(hwnd)
-        winput.mouse_click(*point)
-        return point
-    return click_layout(hwnd, name)
-
-
 def navigate_to_direct_connect(hwnd, _cfg):
-    """Navigate by visible labels, with normalized coordinates as a fallback."""
-    click_control(hwnd, "servers", ("Servers",))
+    """Navigate using coordinates relative to the current game window."""
+    click_layout(hwnd, "servers")
     time.sleep(0.8)
-    click_control(hwnd, "direct_connect", ("Direct Connect", "Direct"))
+    click_layout(hwnd, "direct_connect")
     time.sleep(0.8)
 
 
 def attempt_join(hwnd, cfg, ip, port, watcher):
     navigate_to_direct_connect(hwnd, cfg)
-    click_control(hwnd, "address_field", ("Enter IP/Hostname", "IP/Hostname", "Hostname"))
+    click_layout(hwnd, "address_field")
     winput.post_text(hwnd, f"{ip}:{port}")
-    click_control(hwnd, "connect", ("Connect",))
+    click_layout(hwnd, "connect")
     if not watcher.wait_for_marker(logwatch.CONNECTING_MARK, 5):
         raise JoinError("SCP:SL did not start connecting. Check the game layout.")
     return watcher.wait_for_outcome(cfg["attempt_timeout_s"])
