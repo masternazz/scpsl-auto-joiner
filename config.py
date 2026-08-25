@@ -25,6 +25,8 @@ DEFAULTS = {
     },
 }
 
+REQUIRED_CLICK_POINTS = ("servers_tab", "direct_connect", "ip_field", "connect_button")
+
 
 def load_config(path=None):
     path = path or CONFIG_PATH
@@ -51,4 +53,4 @@ def save_config(cfg, path=None):
 
 
 def calibrated(cfg):
-    return all(tuple(v) != (0, 0) for v in cfg["click_points"].values())
+    return all(tuple(cfg["click_points"].get(name, (0, 0))) != (0, 0) for name in REQUIRED_CLICK_POINTS)

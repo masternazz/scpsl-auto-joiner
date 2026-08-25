@@ -42,6 +42,7 @@ class Api:
         cfg = config.load_config()
         return {
             "calibrated": config.calibrated(cfg),
+            "navigation_mode": cfg.get("navigation_mode", "automatic"),
             "servers": sorted(resolver.load_servers()),
             "points": cfg["click_points"],
         }
@@ -52,6 +53,7 @@ class Api:
     def save_calibration(self, points):
         cfg = config.load_config()
         cfg["click_points"].update({k: [int(v[0]), int(v[1])] for k, v in points.items()})
+        cfg["navigation_mode"] = "manual"
         config.save_config(cfg)
         return self.get_state()
 

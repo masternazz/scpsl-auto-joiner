@@ -97,6 +97,7 @@ class App:
         header.columnconfigure(0, weight=1)
         ttk.Label(header, text="SCP:SL Auto-Joiner", style="Title.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(header, text="A quiet queue assistant for SCP: Secret Laboratory.", style="Subtitle.TLabel").grid(row=1, column=0, sticky="w", pady=(5, 0))
+        ttk.Label(header, text="RESPONSIVE UI · BUILD 2026.08.24-R2", style="Subtitle.TLabel").grid(row=2, column=0, sticky="w", pady=(3, 0))
         self.mode_badge = tk.Label(header, text="READY", bg="#163148", fg=CYAN, font=("Segoe UI", 9, "bold"), padx=12, pady=6)
         self.mode_badge.grid(row=0, column=1, rowspan=2, sticky="e")
 
@@ -233,7 +234,7 @@ class App:
 
 
 class CalibrationWindow:
-    steps = [("play", "Play button"), ("servers_tab", "Servers tab"), ("internet_tab", "Internet tab"), ("direct_connect", "Direct Connect"), ("ip_field", "IP:port field"), ("connect_button", "Connect button")]
+    steps = [("servers_tab", "Servers tab"), ("direct_connect", "Direct Connect button"), ("ip_field", "IP/Hostname field"), ("connect_button", "Connect button")]
 
     def __init__(self, app):
         self.app, self.index = app, 0
