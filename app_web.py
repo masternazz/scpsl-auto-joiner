@@ -22,6 +22,9 @@ class Api:
     def __init__(self):
         self.window = None
         self.watcher = None
+        self.remember_stop = threading.Event()
+        self.join_stop = threading.Event()
+        self.join_thread = None
 
     def get_state(self):
         cfg = config.load_config()
@@ -47,17 +50,21 @@ class Api:
     def begin_remember(self):
         if self.watcher is not None:
             return False
+        self.remember_stop.clear()
         self.watcher = logwatch.LogWatcher()
 
         def watch():
             try:
                 match = self.watcher.wait_for_regex(logwatch.CONNECTING_IP_RE, 120)
+                if self.remember_stop.is_set():
+                    self.push("backendStatus", "Server detection stopped.", False)
+                    return
                 if match:
                     self.push("serverDetected", match.group(1), int(match.group(2)))
                 else:
-                    self.push("status", "Timed out waiting for a connection attempt.", False)
+                    self.push("backendStatus", "Timed out waiting for a connection attempt.", False)
             except Exception as exc:
-                self.push("status", f"Could not read Player.log: {exc}", False)
+                self.push("backendStatus", f"Could not read Player.log: {exc}", False)
             finally:
                 self.watcher.close()
                 self.watcher = None
@@ -65,12 +72,28 @@ class Api:
         threading.Thread(target=watch, daemon=True).start()
         return True
 
-    def start_join(self, name):
-        def run():
-            result = joiner.run(name, on_status=lambda text: self.push("status", text, True))
-            self.push("finished", result, False)
+    def stop_remember(self):
+        self.remember_stop.set()
+        return True
 
-        threading.Thread(target=run, daemon=True).start()
+    def start_join(self, name):
+        if self.join_thread is not None and self.join_thread.is_alive():
+            return False
+        self.join_stop.clear()
+
+        def run():
+            try:
+                result = joiner.run(name, on_status=lambda text: self.push("backendStatus", text, True), stop_event=self.join_stop)
+                self.push("backendFinished", result, False)
+            finally:
+                self.join_thread = None
+
+        self.join_thread = threading.Thread(target=run, daemon=True)
+        self.join_thread.start()
+        return True
+
+    def stop_join(self):
+        self.join_stop.set()
         return True
 
     def push(self, function, *args):

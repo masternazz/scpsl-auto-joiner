@@ -10,4 +10,4 @@ python -m PyInstaller --noconfirm --clean --onedir --windowed `
   --add-data "assets\app.ico;assets" --add-data "webui;webui" `
   --collect-all webview --collect-all clr_loader --hidden-import clr app_web.py
 
-Write-Host "Built dist\SCP-SL-Auto-Joiner.exe"
+Write-Host "Built dist\SCP-SL-Auto-Joiner\SCP-SL-Auto-Joiner.exe"

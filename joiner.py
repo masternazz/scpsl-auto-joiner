@@ -66,7 +66,7 @@ def attempt_join(hwnd, cfg, ip, port, watcher):
     return watcher.wait_for_outcome(cfg["attempt_timeout_s"])
 
 
-def run(server_name, on_status=None):
+def run(server_name, on_status=None, stop_event=None):
     """Blocking — call from a background thread, not the UI thread. Returns
     a final status string; on_status(str), if given, gets progress updates."""
     def status(msg):
@@ -105,6 +105,9 @@ def run(server_name, on_status=None):
         attempts = 0
         deadline = time.monotonic() + cfg["max_minutes"] * 60
         while attempts < cfg["max_attempts"] and time.monotonic() < deadline:
+            if stop_event and stop_event.is_set():
+                status("Stop requested.")
+                return "stopped"
             attempts += 1
             status(f"Attempt {attempts}: connecting to {name} ({ip}:{port})...")
             try:
@@ -116,6 +119,10 @@ def run(server_name, on_status=None):
             if outcome == "success":
                 notify.notify(APP_NAME, f"Joined {name}!")
                 return "success"
+
+            if stop_event and stop_event.is_set():
+                status("Stop requested.")
+                return "stopped"
 
             if outcome == "rejected":
                 unclear = 0
