@@ -4,7 +4,16 @@ import subprocess
 from typing import Literal
 
 
-ConnectionMethod = Literal["direct", "background", "foreground"]
+ConnectionMethod = Literal["direct", "steam", "background", "foreground"]
+
+
+def build_steam_connect_uri(ip, port) -> str:
+    return f"steam://connect/{ip}:{int(port)}"
+
+
+def launch_steam_connect(ip, port) -> None:
+    """Ask the running Steam game to connect without global input."""
+    os.startfile(build_steam_connect_uri(ip, port))
 
 
 def build_direct_args(executable, ip, port) -> list[str]:
@@ -19,14 +28,17 @@ def launch_direct(executable, ip, port) -> subprocess.Popen:
 
 def choose_method(config, game_running) -> ConnectionMethod:
     """Choose a method without ever direct-launching an existing client."""
-    preferred = config.get("connection_method", "automatic")
+    if not game_running:
+        return "direct"
+    # Old test/config dictionaries may omit the new setting. The persisted
+    # config migration supplies "automatic" for real users; treating an
+    # omitted value as background preserves that legacy API behavior.
+    preferred = config.get("connection_method", "background")
     if preferred == "foreground":
         return "foreground"
     if preferred == "background":
         return "background"
-    if not game_running:
-        return "direct"
-    return "background"
+    return "steam"
 
 
 def connect_with_fallback(ctx) -> None:
@@ -49,11 +61,13 @@ def connect_with_fallback(ctx) -> None:
         ctx.connected = ctx.wait_for_connecting()
         return
 
-    ctx.start_background()
-    ctx.connected = ctx.wait_for_connecting()
-    if ctx.connected or ctx.stopped():
-        return
+    if method == "steam":
+        ctx.start_steam()
+        ctx.connected = ctx.wait_for_connecting()
+        if ctx.connected or ctx.stopped():
+            return
 
-    ctx.method = "foreground"
-    ctx.start_foreground()
+    # Automatic/background modes never synthesize global input.
+    ctx.method = "background"
+    ctx.start_background()
     ctx.connected = ctx.wait_for_connecting()

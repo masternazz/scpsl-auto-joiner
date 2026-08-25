@@ -32,7 +32,7 @@ LAYOUT_POINTS = {
     # SCP:SL's 4K borderless UI is laid out in a 1920x1080 logical canvas
     # and scaled to the physical window. These centers are measured from the
     # shipped client rather than assuming the controls fill the window.
-    "direct_connect": (0.41, 0.19),
+    "direct_connect": (0.525, 0.193),
     "address_field": (0.50, 0.49),
     "connect": (0.53, 0.55),
 }
@@ -249,6 +249,9 @@ class _ConnectionAttempt:
     def start_direct(self):
         launch_game_connected(self.ip, self.port)
 
+    def start_steam(self):
+        transport.launch_steam_connect(self.ip, self.port)
+
     def start_background(self):
         prepare_direct_connect(self.hwnd, self.ip, self.port, open_servers=self.open_servers)
         click_layout(self.hwnd, "connect")
@@ -297,10 +300,10 @@ def dismiss_connection_overlay(hwnd):
     """Close SCP:SL's server-full/disconnect overlay before retrying."""
     if not hwnd:
         return
-    # Unity builds using the new Input System often ignore PostMessage keys;
-    # the compatibility helper restores the user's previous foreground app.
+    # Automatic mode must never move the cursor or activate SCP:SL. The
+    # explicit foreground connection method remains available for users who
+    # choose it in Settings.
     winput.post_key_tap(hwnd, winput.VK_ESCAPE)
-    winput.foreground_key_tap(hwnd, winput.VK_ESCAPE)
 
 
 def wait_for_retry_delay(delay, stop_event=None):
@@ -373,7 +376,7 @@ def run_group(group_id, on_status=None, stop_event=None):
             try:
                 outcome = connect_once(
                     hwnd, cfg, watcher, server["ip"], server["port"],
-                    open_servers=True,
+                    open_servers=(attempts == 1),
                     launch_direct=(attempts == 1 and cold_direct),
                     stop_event=stop_event,
                 )
@@ -489,10 +492,7 @@ def run(server_name, on_status=None, stop_event=None):
             try:
                 outcome = connect_once(
                     hwnd, cfg, watcher, ip, port,
-                    # A cold +connect rejection leaves the client on News;
-                    # opening Servers on every retry is harmless when it is
-                    # already selected and makes both paths deterministic.
-                    open_servers=True,
+                    open_servers=(attempts == 1),
                     launch_direct=(attempts == 1 and cold_direct),
                     stop_event=stop_event,
                 )

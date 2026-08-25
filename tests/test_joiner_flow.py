@@ -208,14 +208,13 @@ def test_full_run_retries_with_background_window_messages(monkeypatch):
     assert result == "success"
     assert events == [
         ("click", 120, 50),
-        ("click", 410, 190),
+        ("click", 525, 193),
         ("click", 500, 490),
         ("text", "1.2.3.4:7778"),
         ("click", 530, 550),
         ("key", joiner.winput.VK_RETURN),
         ("key", joiner.winput.VK_ESCAPE),
-        ("click", 120, 50),
-        ("click", 410, 190),
+        ("click", 525, 193),
         ("click", 500, 490),
         ("text", "1.2.3.4:7778"),
         ("click", 530, 550),
@@ -548,3 +547,87 @@ def test_run_group_rejects_missing_or_empty_group_without_starting_game(monkeypa
     monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
 
     assert joiner.run_group("group-1") == expected
+
+
+def test_automatic_direct_connect_ratio_targets_direct_connect_not_the_left_rent_area(monkeypatch):
+    monkeypatch.setattr(joiner.winput, "get_window_rect", lambda _hwnd: (0, 0, 2048, 1152))
+
+    assert joiner.LAYOUT_POINTS["direct_connect"] == (0.525, 0.193)
+    assert joiner.layout_point(123, "direct_connect") == (1075, 222)
+    rent_area_point = (int(2048 * 0.41), int(1152 * 0.19))
+    assert joiner.layout_point(123, "direct_connect") != rent_area_point
+
+
+def test_automatic_warm_retries_use_steam_then_focus_preserving_background_navigation(monkeypatch):
+    events = []
+    cfg = {
+        "connection_method": "automatic",
+        "navigation_mode": "automatic",
+        "click_points": {},
+        "attempt_timeout_s": 1,
+        "retry_interval_s": 0,
+        "max_unclear": 3,
+        "max_attempts": 2,
+        "max_minutes": 5,
+    }
+
+    class SteamThenBackgroundWatcher(FakeWatcher):
+        def __init__(self):
+            self.outcomes = iter(("rejected_or_unknown", "success"))
+            self.connecting_checks = 0
+
+        def wait_for_marker(self, marker, _timeout, stop_event=None):
+            assert marker == joiner.logwatch.CONNECTING_MARK
+            self.connecting_checks += 1
+            return self.connecting_checks % 2 == 0
+
+    monkeypatch.setattr(joiner.config_mod, "load_config", lambda: cfg)
+    monkeypatch.setattr(joiner.resolver, "resolve", lambda _name: ("Canada #2", "1.2.3.4", 7778))
+    monkeypatch.setattr(joiner.logwatch, "LogWatcher", SteamThenBackgroundWatcher)
+    monkeypatch.setattr(joiner.winput, "find_game_window", lambda _title: 123)
+    monkeypatch.setattr(joiner.winput, "get_window_rect", lambda _hwnd: (0, 0, 1000, 1000))
+    monkeypatch.setattr(joiner.transport, "launch_steam_connect", lambda ip, port: events.append(("steam", ip, port)))
+    monkeypatch.setattr(joiner.winput, "post_click", lambda _hwnd, x, y: events.append(("click", x, y)))
+    monkeypatch.setattr(joiner.winput, "replace_text", lambda _hwnd, text: events.append(("text", text)))
+    monkeypatch.setattr(joiner.winput, "post_key_tap", lambda _hwnd, key: events.append(("key", key)))
+    monkeypatch.setattr(joiner.winput, "foreground_click", lambda *_args: (_ for _ in ()).throw(AssertionError("must not use foreground click")))
+    monkeypatch.setattr(joiner.winput, "foreground_replace_text", lambda *_args: (_ for _ in ()).throw(AssertionError("must not use foreground text")))
+    monkeypatch.setattr(joiner.winput, "foreground_key_tap", lambda *_args: (_ for _ in ()).throw(AssertionError("must not use foreground key")))
+    monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
+    monkeypatch.setattr(joiner.time, "sleep", lambda _seconds: None)
+
+    assert joiner.run("Canada #2") == "success"
+    assert events == [
+        ("steam", "1.2.3.4", 7778),
+        ("click", 120, 50),
+        ("click", 525, 193),
+        ("click", 500, 490),
+        ("text", "1.2.3.4:7778"),
+        ("click", 530, 550),
+        ("key", joiner.winput.VK_RETURN),
+        ("key", joiner.winput.VK_ESCAPE),
+        ("steam", "1.2.3.4", 7778),
+        ("click", 525, 193),
+        ("click", 500, 490),
+        ("text", "1.2.3.4:7778"),
+        ("click", 530, 550),
+        ("key", joiner.winput.VK_RETURN),
+    ]
+
+
+def test_run_group_opens_servers_only_for_its_first_warm_attempt(monkeypatch):
+    targets = [
+        {"id": "one", "name": "Alpha", "ip": "1.1.1.1", "port": 7777},
+        {"id": "two", "name": "Bravo", "ip": "2.2.2.2", "port": 7778},
+    ]
+    calls = []
+    _configure_group_run(monkeypatch, targets, iter(("rejected", "success")))
+
+    def attempt(_hwnd, _cfg, _watcher, _ip, _port, **kwargs):
+        calls.append(kwargs["open_servers"])
+        return "rejected" if len(calls) == 1 else "success"
+
+    monkeypatch.setattr(joiner, "connect_once", attempt)
+
+    assert joiner.run_group("group-1") == "success"
+    assert calls == [True, False]
