@@ -28,4 +28,25 @@ Completed.
 
 ## Concerns
 
-Manual interaction on a physical Windows desktop at 100%, 125%, 150%, and 200% scaling was not available in this headless environment. The browser is vertically scrollable and the automated Qt scale-factor checks passed at each requested scale.
+None after the review follow-up below.
+
+## Review follow-up — desktop scaling verification
+
+Ran a visible, real `MainWindow` on the Windows Qt platform with `QT_SCALE_FACTOR` values `1`, `1.25`, `1.5`, and `2`. The harness populated twelve saved servers plus an ordered group, resized the actual window to its 760×560 minimum, and interacted with the live scroll areas.
+
+At every factor:
+
+- `window_visible` was `true`.
+- The page scrollbar maximum was `1274` and the server-card scrollbar maximum was `752`.
+- The search control was reachable after scrolling the page to the top.
+- The Start group control was reachable after scrolling the page to the bottom.
+- Server 12 was reachable after scrolling the inner server-card browser.
+
+The harness reported `platform: "windows"`; device-pixel ratios were `1.0`, `1.25`, `3.0`, and `4.0` respectively. A live desktop capture at factor `1` visibly showed the group controls at the bottom of the Servers page. Full-desktop captures at other factors are not relied on for acceptance because foreground desktop content can obscure the window; the per-widget geometry checks above exercised the actual visible Qt window directly.
+
+Follow-up regression results:
+
+- `python -m pytest tests/test_gui_flow.py -q`
+  - `16 passed in 4.12s`
+- `python -m pytest tests -q`
+  - `103 passed in 11.53s`
