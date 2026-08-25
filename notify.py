@@ -3,8 +3,12 @@ backend isn't available (e.g. running on an unsupported Windows build) so a
 notification failure never crashes the driver loop."""
 from win11toast import toast
 
+import config as config_mod
+
 
 def notify(title: str, message: str):
+    if not config_mod.load_config().get("notifications_enabled", True):
+        return
     try:
         toast(title, message)
     except Exception:

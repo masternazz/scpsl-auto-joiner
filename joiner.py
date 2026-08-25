@@ -414,6 +414,9 @@ def run_group(group_id, on_status=None, stop_event=None):
             if wait_for_retry_delay(cfg["retry_interval_s"], stop_event):
                 status("Stop requested.")
                 return "stopped"
+            if index == len(servers) - 1 and not cfg.get("group_loop", True):
+                notify.notify(APP_NAME, f"Finished one pass through group '{group['name']}'.")
+                return "gave_up"
             index = (index + 1) % len(servers)
 
         notify.notify(APP_NAME, f"Gave up trying to join group '{group['name']}'.")

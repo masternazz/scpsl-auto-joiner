@@ -465,6 +465,18 @@ def test_run_group_loops_to_first_server_after_final_rejection(monkeypatch):
     assert calls == ["1.1.1.1", "2.2.2.2", "1.1.1.1"]
 
 
+def test_run_group_stops_after_final_server_when_group_loop_is_disabled(monkeypatch):
+    targets = [
+        {"id": "one", "name": "Alpha", "ip": "1.1.1.1", "port": 7777},
+        {"id": "two", "name": "Bravo", "ip": "2.2.2.2", "port": 7778},
+    ]
+    calls = _configure_group_run(monkeypatch, targets, iter(("rejected", "rejected")))
+    joiner.config_mod.load_config()["group_loop"] = False
+
+    assert joiner.run_group("group-1") == "gave_up"
+    assert calls == ["1.1.1.1", "2.2.2.2"]
+
+
 def test_run_group_resets_unclear_counter_when_advancing(monkeypatch):
     targets = [
         {"id": "one", "name": "Alpha", "ip": "1.1.1.1", "port": 7777},

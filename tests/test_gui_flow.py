@@ -77,6 +77,7 @@ def test_action_buttons_fit_at_minimum_window_size(monkeypatch):
     monkeypatch.setattr(gui.resolver, "load_servers", lambda: {})
     window = gui.MainWindow()
     window.resize(window.minimumSize())
+    window.show_page(1)
     window.show()
     qt_app.processEvents()
 
@@ -179,7 +180,7 @@ def test_settings_page_saves_timing_mode_and_coordinates(monkeypatch):
     window = gui.MainWindow()
     window.settings_nav.click()
     qt_app.processEvents()
-    assert window.pages.currentIndex() == 2
+    assert window.pages.currentIndex() == 3
 
     window.retry_interval.setValue(9)
     window.attempt_timeout.setValue(35)
@@ -227,7 +228,7 @@ def test_settings_actions_fit_at_minimum_window_width(monkeypatch):
     monkeypatch.setattr(gui.resolver, "load_servers", lambda: {})
     window = gui.MainWindow()
     window.resize(window.minimumSize())
-    window.show_page(2)
+    window.show_page(3)
     window.show()
     qt_app.processEvents()
 
@@ -272,6 +273,8 @@ def test_saved_server_dropdown_browses_and_filters_without_rebuilding(monkeypatc
     }
     monkeypatch.setattr(gui.resolver, "load_servers", lambda: servers)
     window = gui.MainWindow()
+    window.show_page(1)
+    window.show()
     original_model = window.server_box.model()
 
     assert window.saved_servers_button.width() <= 56
@@ -317,6 +320,56 @@ def test_delete_selected_server_confirms_and_refreshes_picker(monkeypatch):
     window.close()
 
 
+def test_onboarding_diagnostics_and_settings_wiring(monkeypatch):
+    """The Task 6 controls expose the active strategy without starting a game.
+
+    This fails if the four-page shell, safe onboarding checks, diagnostics, or
+    persisted method/settings controls are removed or disconnected.
+    """
+    qt_app = app()
+    cfg = gui.config_mod.DEFAULTS.copy() | {
+        "click_points": {k: v[:] for k, v in gui.config_mod.DEFAULTS["click_points"].items()},
+    }
+    saved = []
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: {"Canada #2": {"ip": "1.2.3.4", "port": 7778}})
+    monkeypatch.setattr(gui.config_mod, "load_config", lambda: cfg.copy() | {"click_points": {k: v[:] for k, v in cfg["click_points"].items()}})
+    def save_config(value):
+        cfg.update(value)
+        saved.append(value.copy())
+    monkeypatch.setattr(gui.config_mod, "save_config", save_config)
+    monkeypatch.setattr(gui.joiner, "find_game_executable", lambda: None)
+
+    window = gui.MainWindow()
+
+    assert window.pages.count() == 4
+    window.servers_nav.click(); qt_app.processEvents()
+    assert window.pages.currentIndex() == 1
+    window.setup_nav.click(); qt_app.processEvents()
+    assert window.pages.currentIndex() == 2
+    window.settings_nav.click(); qt_app.processEvents()
+    assert window.pages.currentIndex() == 3
+    assert "0 = unlimited" in window.unlimited_limits_note.text().lower()
+
+    window.set_connection_method("foreground")
+    window.group_loop_checkbox.setChecked(False)
+    window.browser_refresh_timeout.setValue(5)
+    window.save_settings()
+    assert saved[-1]["connection_method"] == "foreground"
+    assert saved[-1]["group_loop"] is False
+    assert saved[-1]["browser_refresh_timeout_s"] == 5
+
+    window.run_diagnostics()
+    assert "Foreground" in window.diagnostics_result.text()
+    assert "not detected" in window.diagnostics_result.text().lower()
+
+    window.show_onboarding()
+    qt_app.processEvents()
+    assert window.onboarding_dialog.isVisible()
+    assert "safe direct-connect check" in window.onboarding_result.text().lower()
+    window.onboarding_dialog.close()
+    window.close()
+
+
 def _browser_store():
     return {
         "version": 1,
@@ -326,6 +379,25 @@ def _browser_store():
         ],
         "groups": [{"id": "raid", "name": "Raid night", "server_ids": ["europe", "canada"]}],
     }
+
+
+def test_versioned_store_never_populates_picker_with_storage_keys(monkeypatch):
+    """The GUI accepts a versioned store at the legacy loader boundary.
+
+    Returning the raw store reproduces the reported regression: treating this
+    mapping as ``{display_name: endpoint}`` used to show ``version``,
+    ``servers``, and ``groups`` in the picker (and could crash during refresh).
+    """
+    qt_app = app()
+    store = _browser_store()
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: store)
+    monkeypatch.setattr(gui.resolver, "load_store", lambda: store)
+
+    window = gui.MainWindow()
+
+    assert [window.server_box.itemText(index) for index in range(window.server_box.count())] == ["Canada #2", "Europe #1"]
+    assert [window.group_box.itemText(index) for index in range(window.group_box.count())] == ["Raid night"]
+    window.close()
 
 
 def test_server_cards_filter_and_select_a_saved_server(monkeypatch):
@@ -355,7 +427,7 @@ def test_selected_server_refresh_uses_injected_query_result(monkeypatch):
         item["name"]: {"ip": item["ip"], "port": item["port"]} for item in store["servers"]
     })
     monkeypatch.setattr(gui.resolver, "load_store", lambda: store)
-    monkeypatch.setattr(gui.resolver, "query_server", lambda *_args: {
+    monkeypatch.setattr(gui.resolver, "query_server", lambda *_args, **_kwargs: {
         "players": 7, "max_players": 20, "available": True, "latency_ms": 12.5,
     })
     monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
@@ -367,6 +439,31 @@ def test_selected_server_refresh_uses_injected_query_result(monkeypatch):
 
     assert "7 / 20 players" in window.server_card_text["Canada #2"].text()
     assert "12.5 ms" in window.server_card_text["Canada #2"].text()
+    window.close()
+
+
+def test_selected_server_refresh_uses_saved_timeout_preference(monkeypatch):
+    qt_app = app()
+    store = _browser_store()
+    seen = []
+    cfg = gui.config_mod.DEFAULTS.copy() | {
+        "browser_refresh_timeout_s": 7,
+        "click_points": {k: v[:] for k, v in gui.config_mod.DEFAULTS["click_points"].items()},
+    }
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: {
+        item["name"]: {"ip": item["ip"], "port": item["port"]} for item in store["servers"]
+    })
+    monkeypatch.setattr(gui.resolver, "load_store", lambda: store)
+    monkeypatch.setattr(gui.config_mod, "load_config", lambda: cfg)
+    monkeypatch.setattr(gui.resolver, "query_server", lambda ip, port, timeout: seen.append((ip, port, timeout)) or None)
+    monkeypatch.setattr(gui.threading, "Thread", ImmediateThread)
+    window = gui.MainWindow()
+    window.server_box.setCurrentText("Canada #2")
+
+    window.refresh_selected_server()
+    qt_app.processEvents()
+
+    assert seen == [("1.2.3.4", 7778, 7)]
     window.close()
 
 

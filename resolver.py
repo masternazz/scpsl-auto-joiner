@@ -17,12 +17,35 @@ RICH_TEXT_TAG_RE = re.compile(r"<[^>]{1,100}>")
 SERVERS_PATH = os.path.join(app_dir(), "servers.json")
 
 
+def server_mapping(data):
+    """Return legacy picker data from either supported local store shape.
+
+    GUI callers historically consumed ``{display_name: {ip, port}}``. The
+    versioned store deliberately has ``version``, ``servers``, and ``groups``
+    keys, so this adapter keeps those storage keys out of picker widgets while
+    continuing to accept old flat files.
+    """
+    if not isinstance(data, dict):
+        return {}
+    records = data.get("servers") if isinstance(data.get("servers"), list) else None
+    if records is not None:
+        return {
+            item["name"]: {"ip": item["ip"], "port": item["port"]}
+            for item in records
+            if isinstance(item, dict) and all(key in item for key in ("name", "ip", "port"))
+        }
+    return {
+        name: {"ip": entry["ip"], "port": entry["port"]}
+        for name, entry in data.items()
+        if isinstance(name, str) and isinstance(entry, dict) and "ip" in entry and "port" in entry
+    }
+
+
 def load_servers(path=None):
     path = path or SERVERS_PATH
     if not os.path.exists(path):
         return {}
-    data = server_store.load_store(path)
-    return {server["name"]: {"ip": server["ip"], "port": server["port"]} for server in data["servers"]}
+    return server_mapping(server_store.load_store(path))
 
 
 def load_store(path=None):
