@@ -5,7 +5,10 @@ import sys
 
 def app_dir():
     if getattr(sys, "frozen", False):
-        return os.path.dirname(os.path.abspath(sys.executable))
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        path = os.path.join(base, "SCP-SL-Auto-Joiner")
+        os.makedirs(path, exist_ok=True)
+        return path
     return os.path.dirname(os.path.abspath(__file__))
 
 

@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import threading
+import traceback
 
 import webview
 
@@ -11,7 +12,7 @@ import joiner
 import logwatch
 import resolver
 import winput
-from app_paths import resource_path
+from app_paths import app_dir, resource_path
 
 
 def resource_dir():
@@ -111,7 +112,14 @@ def main():
     page = os.path.join(resource_dir(), "webui", "index.html")
     window = webview.create_window("SCP:SL Auto-Joiner", page, js_api=api, width=1180, height=760, min_size=(980, 620))
     api.window = window
-    webview.start(debug=not getattr(sys, "frozen", False))
+    try:
+        webview.start(gui="edgechromium", debug=not getattr(sys, "frozen", False))
+    except Exception:
+        error_path = os.path.join(app_dir(), "startup-error.log")
+        with open(error_path, "a", encoding="utf-8") as log:
+            traceback.print_exc(file=log)
+        import gui
+        gui.main()
 
 
 if __name__ == "__main__":
