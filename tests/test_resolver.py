@@ -44,3 +44,15 @@ def test_remember_server_overwrites_same_name(tmp_path):
     resolver_mod.remember_server("Canada 2", "5.6.7.8", 8888, path)
     result = resolver_mod.resolve("Canada 2", path)
     assert result == ("Canada 2", "5.6.7.8", 8888)
+
+
+def test_forget_server_removes_only_selected_name(tmp_path):
+    path = str(tmp_path / "servers.json")
+    resolver_mod.remember_server("Canada 2", "1.2.3.4", 7777, path)
+    resolver_mod.remember_server("Canada 3", "5.6.7.8", 7778, path)
+
+    assert resolver_mod.forget_server("Canada 2", path) is True
+    assert resolver_mod.load_servers(path) == {
+        "Canada 3": {"ip": "5.6.7.8", "port": 7778},
+    }
+    assert resolver_mod.forget_server("Missing", path) is False

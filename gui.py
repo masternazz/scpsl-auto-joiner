@@ -354,13 +354,21 @@ class MainWindow(QMainWindow):
         box.addWidget(self.endpoint_preview)
         self.join_button = QPushButton("Start auto-join"); self.join_button.setProperty("kind", "primary")
         self.remember_button = QPushButton("Remember a server")
+        self.delete_server_button = QPushButton("Delete selected")
+        self.delete_server_button.setProperty("kind", "danger")
+        self.delete_server_button.setAccessibleName("Delete selected saved server")
+        self.delete_server_button.setEnabled(False)
         self.stop_button = QPushButton("Stop")
+        self.remember_button.setMaximumWidth(160)
+        self.delete_server_button.setMaximumWidth(140)
+        self.stop_button.setMaximumWidth(70)
         self.stop_button.setEnabled(False)
         self.join_button.clicked.connect(self.join); self.remember_button.clicked.connect(self.remember)
+        self.delete_server_button.clicked.connect(self.delete_server)
         self.stop_button.clicked.connect(self.stop_join)
         box.addWidget(self.join_button)
         secondary_actions = QHBoxLayout(); secondary_actions.setSpacing(10)
-        secondary_actions.addWidget(self.remember_button); secondary_actions.addWidget(self.stop_button); secondary_actions.addStretch()
+        secondary_actions.addWidget(self.remember_button); secondary_actions.addWidget(self.delete_server_button); secondary_actions.addWidget(self.stop_button); secondary_actions.addStretch()
         box.addLayout(secondary_actions)
         box.addWidget(label("Remember a server watches your next normal connection, detects its IP and port, then asks you to give it a friendly name.", "helper"))
         layout.addWidget(destination)
@@ -569,12 +577,14 @@ class MainWindow(QMainWindow):
             self.endpoint_preview.setText(f"Will join {entry['ip']}:{entry['port']}")
         else:
             self.endpoint_preview.setText("Choose a saved server from the list.")
+        self.delete_server_button.setEnabled(bool(entry) and not self.busy)
 
     def status_text(self, text):
         self.status.setText(text)
 
     def set_busy(self, busy):
         self.busy = busy; self.join_button.setEnabled(not busy); self.remember_button.setEnabled(not busy); self.progress.setVisible(busy); self.feed.setText("RUNNING" if busy else "IDLE")
+        self.delete_server_button.setEnabled(not busy and self.server_box.currentText() in self.servers)
         if not busy:
             self.stop_button.setEnabled(False)
 
@@ -597,6 +607,26 @@ class MainWindow(QMainWindow):
     def remember(self):
         if self.busy: return
         self.set_busy(True); threading.Thread(target=self.watch_server, daemon=True).start()
+
+    def delete_server(self):
+        name = self.server_box.currentText().strip()
+        entry = self.servers.get(name)
+        if not entry or self.busy:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Delete saved server",
+            f"Delete {name}?\n\nSaved endpoint: {entry['ip']}:{entry['port']}\nThis cannot be undone.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        if resolver.forget_server(name):
+            self.refresh()
+            self.bridge.status.emit(f"Deleted saved server {name}.")
+        else:
+            self.bridge.status.emit(f"Could not delete {name}; it was already missing.")
 
     def watch_server(self):
         try:
@@ -662,6 +692,9 @@ QPushButton:pressed {{ background: #26394b; }}
 QPushButton:disabled {{ color: {SUBTLE}; border-color: {LINE}; }}
 QPushButton[kind='primary'] {{ background: {CYAN}; color: #071117; border-color: {CYAN}; font-weight: 700; }}
 QPushButton[kind='primary']:hover {{ background: #9aebfa; }}
+QPushButton[kind='danger'] {{ color: {RED}; border-color: #704449; }}
+QPushButton[kind='danger']:hover {{ background: #382328; border-color: {RED}; }}
+QPushButton[kind='danger']:disabled {{ background: {CARD}; color: {SUBTLE}; border-color: {LINE}; }}
 QPushButton[kind='nav'] {{ background: transparent; color: {MUTED}; border: 0; text-align: left; padding: 12px 10px; }}
 QPushButton[kind='nav']:hover, QPushButton[kind='nav'][active='true'] {{ background: {CARD}; color: {TEXT}; }}
 QPushButton#serverPickerButton {{ min-width: 50px; max-width: 50px; min-height: 50px; max-height: 50px; padding: 0; font-size: 20px; font-weight: 700; }}

@@ -82,7 +82,7 @@ def test_action_buttons_fit_at_minimum_window_size(monkeypatch):
 
     scroll = window.pages.currentWidget()
     viewport_right = scroll.viewport().mapToGlobal(QPoint(scroll.viewport().width(), 0)).x()
-    for button in (window.saved_servers_button, window.join_button, window.remember_button, window.stop_button):
+    for button in (window.saved_servers_button, window.join_button, window.remember_button, window.delete_server_button, window.stop_button):
         button_right = button.mapToGlobal(QPoint(button.width(), 0)).x()
         assert button_right <= viewport_right
     window.close()
@@ -277,6 +277,7 @@ def test_saved_server_dropdown_browses_and_filters_without_rebuilding(monkeypatc
     assert window.saved_servers_button.width() <= 56
     assert window.saved_servers_button.accessibleName() == "Show saved servers"
     assert window.server_count_label.text() == "2 SAVED"
+    assert not window.delete_server_button.isEnabled()
 
     window.saved_servers_button.click()
     qt_app.processEvents()
@@ -288,4 +289,29 @@ def test_saved_server_dropdown_browses_and_filters_without_rebuilding(monkeypatc
     assert window.server_box.model() is original_model
     assert window.server_completer.completionModel().rowCount() == 1
     window.server_box.hidePopup()
+    window.close()
+
+
+def test_delete_selected_server_confirms_and_refreshes_picker(monkeypatch):
+    qt_app = app()
+    servers = {
+        "Canada #2": {"ip": "1.2.3.4", "port": 7778},
+        "Canada #3": {"ip": "5.6.7.8", "port": 7779},
+    }
+    deleted = []
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: servers.copy())
+    monkeypatch.setattr(gui.resolver, "forget_server", lambda name: deleted.append(name) or bool(servers.pop(name, None)))
+    monkeypatch.setattr(gui.QMessageBox, "question", lambda *_args, **_kwargs: gui.QMessageBox.Yes)
+    window = gui.MainWindow()
+    window.server_box.setCurrentText("Canada #2")
+    qt_app.processEvents()
+
+    assert window.delete_server_button.isEnabled()
+    window.delete_server_button.click()
+    qt_app.processEvents()
+
+    assert deleted == ["Canada #2"]
+    assert window.server_box.count() == 1
+    assert window.server_count_label.text() == "1 SAVED"
+    assert window.server_box.currentText() != "Canada #2"
     window.close()

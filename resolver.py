@@ -37,6 +37,16 @@ def remember_server(name, ip, port, path=None):
     save_servers(servers, path)
 
 
+def forget_server(name, path=None):
+    path = path or SERVERS_PATH
+    servers = load_servers(path)
+    if name not in servers:
+        return False
+    del servers[name]
+    save_servers(servers, path)
+    return True
+
+
 def _parse_a2s_info(packet):
     """Return the server name from a single-packet A2S_INFO response."""
     if len(packet) < 7 or packet[:5] != b"\xff\xff\xff\xffI":
