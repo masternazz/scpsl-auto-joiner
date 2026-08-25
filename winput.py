@@ -26,6 +26,7 @@ _MK_LBUTTON = 0x0001
 _CLICK_MOVE_DWELL = 0.15  # let a hover-highlight settle before the click lands
 
 _KEYEVENTF_KEYUP = 0x0002
+_KEYEVENTF_UNICODE = 0x0004
 
 
 def get_cursor_pos():
@@ -202,6 +203,87 @@ def send_key_tap(vk: int, post_wait: float = 0.1):
         time.sleep(0.05)
     if post_wait:
         time.sleep(post_wait)
+
+
+def send_hotkey(modifier: int, vk: int, post_wait: float = 0.05):
+    """Foreground modifier+key shortcut using SendInput."""
+    send_key_down(modifier)
+    send_key_tap(vk, post_wait=0)
+    send_key_up(modifier)
+    if post_wait:
+        time.sleep(post_wait)
+
+
+def send_key_down(vk: int):
+    scan = ctypes.windll.user32.MapVirtualKeyW(vk, 0)
+    inp = _KINPUT(type=1, union=_KINPUT_UNION(ki=_KEYBDINPUT(
+        wVk=vk, wScan=scan, dwFlags=0, time=0, dwExtraInfo=None)))
+    ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(_KINPUT))
+
+
+def send_key_up(vk: int):
+    scan = ctypes.windll.user32.MapVirtualKeyW(vk, 0)
+    inp = _KINPUT(type=1, union=_KINPUT_UNION(ki=_KEYBDINPUT(
+        wVk=vk, wScan=scan, dwFlags=_KEYEVENTF_KEYUP, time=0, dwExtraInfo=None)))
+    ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(_KINPUT))
+
+
+def send_text(text: str, post_wait: float = 0.02):
+    """Type text into the focused control through Unicode SendInput events."""
+    u32 = ctypes.windll.user32
+    for char in text:
+        code = ord(char)
+        for flags in (_KEYEVENTF_UNICODE, _KEYEVENTF_UNICODE | _KEYEVENTF_KEYUP):
+            inp = _KINPUT(type=1, union=_KINPUT_UNION(ki=_KEYBDINPUT(
+                wVk=0, wScan=code, dwFlags=flags, time=0, dwExtraInfo=None)))
+            u32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(_KINPUT))
+            time.sleep(post_wait)
+
+
+def _restore_user_input(previous_hwnd, previous_cursor):
+    try:
+        if previous_cursor:
+            ctypes.windll.user32.SetCursorPos(*map(int, previous_cursor))
+        if previous_hwnd and ctypes.windll.user32.IsWindow(previous_hwnd):
+            focus_window(previous_hwnd)
+    except Exception:
+        # Restoring another app is best-effort and must never fail a join.
+        pass
+
+
+def foreground_click(hwnd, x: int, y: int, post_wait: float = 0.5):
+    """Reliable Unity click with best-effort restoration of user input."""
+    previous_hwnd = ctypes.windll.user32.GetForegroundWindow()
+    previous_cursor = get_cursor_pos()
+    try:
+        if not focus_window(hwnd):
+            return
+        mouse_click(x, y, post_wait=post_wait)
+    finally:
+        _restore_user_input(previous_hwnd, previous_cursor)
+
+
+def foreground_key_tap(hwnd, vk: int, post_wait: float = 0.1):
+    previous_hwnd = ctypes.windll.user32.GetForegroundWindow()
+    previous_cursor = get_cursor_pos()
+    try:
+        if focus_window(hwnd):
+            send_key_tap(vk, post_wait=post_wait)
+    finally:
+        _restore_user_input(previous_hwnd, previous_cursor)
+
+
+def foreground_replace_text(hwnd, text: str):
+    previous_hwnd = ctypes.windll.user32.GetForegroundWindow()
+    previous_cursor = get_cursor_pos()
+    try:
+        if not focus_window(hwnd):
+            return
+        send_hotkey(VK_CONTROL, VK_A)
+        send_key_tap(VK_BACK, post_wait=0.05)
+        send_text(text)
+    finally:
+        _restore_user_input(previous_hwnd, previous_cursor)
 
 
 # ── PostMessage (background path — doesn't steal focus) ────────────────

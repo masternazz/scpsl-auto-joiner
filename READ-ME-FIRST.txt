@@ -1,0 +1,26 @@
+SCP:SL AUTO-JOINER
+
+Open SCP-SL-Auto-Joiner.exe.
+
+Quick start
+1. Start SCP:SL, or let the app launch it.
+2. Use Remember a server and confirm the friendly name when it is detected.
+3. Choose the saved server and press Start auto-join.
+
+The app stores servers, settings, calibration, and logs in:
+%LOCALAPPDATA%\SCP-SL-Auto-Joiner
+
+Automatic mode is the default. It works from the SCP:SL window geometry and
+uses the game's Player.log to detect connecting, full/rejected, and joined.
+If Unity ignores background input on a particular build, the app briefly uses
+compatibility input, then restores the cursor and the previously focused app.
+
+Set Retry delay to 2 for the normal full-server retry behavior. Set Maximum
+attempts or Maximum runtime to 0 for unlimited operation. Stop auto-join from
+the app at any time.
+
+If the game layout or display arrangement changes, open Settings > Calibrate
+controls and follow the guided on-screen steps. Calibration is per computer.
+
+The app does not include SCP:SL or Steam. The game must be installed through
+Steam and the user must be allowed to join the selected server.

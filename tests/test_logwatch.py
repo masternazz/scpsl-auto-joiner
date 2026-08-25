@@ -187,6 +187,21 @@ def test_marker_wait_preserves_terminal_result_from_same_read(tmp_path):
     watcher.close()
 
 
+def test_logwatcher_reopens_when_game_replaces_player_log(tmp_path):
+    """A cold SCP:SL launch may replace Player.log after the watcher opens it."""
+    log_file = tmp_path / "Player.log"
+    log_file.write_text("old session " + ("x" * 200), encoding="utf-8")
+    watcher = LogWatcher(path=str(log_file))
+
+    # Windows keeps the watcher's handle open, so model Unity's observable
+    # behavior here: truncate the active log and write the new session.
+    with log_file.open("w", encoding="utf-8") as replacement:
+        replacement.write("Connecting to 1.2.3.4!\n")
+
+    assert watcher.wait_for_marker("Connecting to", timeout_s=0.5, poll_interval=0.01)
+    watcher.close()
+
+
 def test_logwatcher_wait_for_regex_found(tmp_path):
     """wait_for_regex returns a match when pattern is found."""
     log_file = tmp_path / "test.log"

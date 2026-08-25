@@ -1,0 +1,30 @@
+# Python caches and local test state
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Per-machine settings and temporary capture/debug files
+config.json
+tmp_*.py
+current-screen*.png
+dpi-screen*.png
+full-failed.png
+ui-*.png
+*.log
+
+# Playwright/E2E scratch data
+.e2e-*/
+graphify-out/
+
+# PyInstaller and packaged release output
+build/
+build-*/
+dist/
+dist-*/
+*.spec
+SCP-SL-Auto-Joiner-*/
+SCP-SL-Containment-Ready/
+*.zip
+
+# Local research scratch files (canonical docs remain tracked explicitly)
+docs/research/ui-research*.md

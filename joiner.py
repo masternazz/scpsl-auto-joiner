@@ -24,9 +24,12 @@ ERROR_LOG_PATH = os.path.join(app_dir(), "autojoiner.log")
 # irrelevant; tune this table if the game changes its menu layout.
 LAYOUT_POINTS = {
     "servers": (0.12, 0.05),
-    "direct_connect": (0.49, 0.18),
-    "address_field": (0.59, 0.51),
-    "connect": (0.63, 0.58),
+    # SCP:SL's 4K borderless UI is laid out in a 1920x1080 logical canvas
+    # and scaled to the physical window. These centers are measured from the
+    # shipped client rather than assuming the controls fill the window.
+    "direct_connect": (0.41, 0.19),
+    "address_field": (0.50, 0.49),
+    "connect": (0.53, 0.55),
 }
 
 
@@ -133,7 +136,7 @@ def layout_point(hwnd, name):
     return int(left + (right - left) * x_ratio), int(top + (bottom - top) * y_ratio)
 
 
-def click_layout(hwnd, name):
+def click_layout(hwnd, name, input_mode="background"):
     cfg = config_mod.load_config()
     manual_names = {
         "servers": "servers_tab",
@@ -145,25 +148,34 @@ def click_layout(hwnd, name):
         point = tuple(cfg["click_points"][manual_names[name]])
     else:
         point = layout_point(hwnd, name)
-    # Target only SCP:SL's window-message queue. This leaves the foreground
-    # app, physical cursor, and keyboard alone.
-    winput.post_click(hwnd, *point)
+    if input_mode == "foreground":
+        winput.foreground_click(hwnd, *point)
+    else:
+        # Target only SCP:SL's window-message queue. This leaves the
+        # foreground app, physical cursor, and keyboard alone. Unity's new
+        # Input System may ignore this path; connect_once then retries the
+        # same attempt through the compatibility path.
+        winput.post_click(hwnd, *point)
     return point
 
 
-def navigate_to_direct_connect(hwnd, open_servers=True):
+def navigate_to_direct_connect(hwnd, open_servers=True, input_mode="background"):
     """Open Direct Connect from News initially or from Servers on retries."""
     if open_servers:
-        click_layout(hwnd, "servers")
+        click_layout(hwnd, "servers", input_mode=input_mode)
         time.sleep(0.8)
-    click_layout(hwnd, "direct_connect")
+    click_layout(hwnd, "direct_connect", input_mode=input_mode)
     time.sleep(0.8)
 
 
-def prepare_direct_connect(hwnd, ip, port, open_servers=True):
-    navigate_to_direct_connect(hwnd, open_servers=open_servers)
-    click_layout(hwnd, "address_field")
-    winput.replace_text(hwnd, f"{ip}:{port}")
+def prepare_direct_connect(hwnd, ip, port, open_servers=True, input_mode="background"):
+    navigate_to_direct_connect(hwnd, open_servers=open_servers, input_mode=input_mode)
+    click_layout(hwnd, "address_field", input_mode=input_mode)
+    address = f"{ip}:{port}"
+    if input_mode == "foreground":
+        winput.foreground_replace_text(hwnd, address)
+    else:
+        winput.replace_text(hwnd, address)
 
 
 def connect_once(hwnd, cfg, watcher, ip, port, open_servers=True,
@@ -180,14 +192,38 @@ def connect_once(hwnd, cfg, watcher, ip, port, open_servers=True,
     else:
         prepare_direct_connect(hwnd, ip, port, open_servers=open_servers)
         click_layout(hwnd, "connect")
+        # Direct Connect opens SCP:SL's Game Info dialog.  Its default action
+        # is Join Game, so confirm it through the game window's own message
+        # queue.  Without this, the client can sit on the dialog forever and
+        # Player.log only contains the initial connection attempt.
+        winput.post_key_tap(hwnd, winput.VK_RETURN)
         marker_timeout = 5
     if not watcher.wait_for_marker(logwatch.CONNECTING_MARK, marker_timeout, stop_event=stop_event):
         if stop_event and stop_event.is_set():
             return "stopped"
         if launch_direct:
             raise JoinError("SCP:SL launched but did not start the direct connection.")
-        raise JoinError("SCP:SL did not start connecting. Calibrate the four controls in Settings.")
+        # Unity's current Input System ignores PostMessage mouse/keyboard
+        # input on some builds. Retry the same attempt with real input, while
+        # foreground_* restores the cursor and the user's previous app.
+        prepare_direct_connect(
+            hwnd, ip, port, open_servers=open_servers, input_mode="foreground"
+        )
+        winput.foreground_click(hwnd, *layout_point(hwnd, "connect"))
+        winput.foreground_key_tap(hwnd, winput.VK_RETURN)
+        if not watcher.wait_for_marker(logwatch.CONNECTING_MARK, marker_timeout, stop_event=stop_event):
+            raise JoinError("SCP:SL did not start connecting. Check the game window and calibration.")
     return watcher.wait_for_outcome(cfg["attempt_timeout_s"], stop_event=stop_event)
+
+
+def dismiss_connection_overlay(hwnd):
+    """Close SCP:SL's server-full/disconnect overlay before retrying."""
+    if not hwnd:
+        return
+    # Unity builds using the new Input System often ignore PostMessage keys;
+    # the compatibility helper restores the user's previous foreground app.
+    winput.post_key_tap(hwnd, winput.VK_ESCAPE)
+    winput.foreground_key_tap(hwnd, winput.VK_ESCAPE)
 
 
 def run(server_name, on_status=None, stop_event=None):
@@ -199,6 +235,11 @@ def run(server_name, on_status=None, stop_event=None):
 
     watcher = None
     try:
+        # The GUI sets this at import time, but the joiner is also used by
+        # tests and direct CLI/debug launches.  Without per-monitor DPI
+        # awareness Windows virtualizes GetWindowRect/ScreenToClient and a
+        # 4K borderless window receives clicks at 1080p-scaled positions.
+        winput.set_dpi_awareness()
         cfg = config_mod.load_config()
         match = resolver.resolve(server_name)
         if match is None:
@@ -238,7 +279,10 @@ def run(server_name, on_status=None, stop_event=None):
             try:
                 outcome = connect_once(
                     hwnd, cfg, watcher, ip, port,
-                    open_servers=(attempts == 1 and not cold_direct),
+                    # A cold +connect rejection leaves the client on News;
+                    # opening Servers on every retry is harmless when it is
+                    # already selected and makes both paths deterministic.
+                    open_servers=True,
                     launch_direct=(attempts == 1 and cold_direct),
                     stop_event=stop_event,
                 )
@@ -265,6 +309,7 @@ def run(server_name, on_status=None, stop_event=None):
                     if hwnd is None:
                         notify.notify(APP_NAME, "SCP:SL is running, but its window could not be found for the retry.")
                         return "unclear"
+                dismiss_connection_overlay(hwnd)
                 delay = cfg["retry_interval_s"]
                 unit = "second" if delay == 1 else "seconds"
                 status(f"Server full or connection rejected. Retrying in {delay} {unit}...")

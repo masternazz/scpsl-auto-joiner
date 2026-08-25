@@ -46,11 +46,41 @@ class LogWatcher:
 
     def __init__(self, path=None):
         self.path = path or DEFAULT_LOG_PATH
-        self._fh = open(self.path, "r", encoding="utf-8", errors="replace")
+        parent = os.path.dirname(self.path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        try:
+            self._fh = open(self.path, "r", encoding="utf-8", errors="replace")
+        except FileNotFoundError:
+            self._fh = open(self.path, "a+", encoding="utf-8", errors="replace")
+        self._file_signature = self._signature()
         self._fh.seek(0, os.SEEK_END)
         self._pending = ""
 
+    def _signature(self):
+        try:
+            stat = os.stat(self.path)
+        except OSError:
+            return None
+        return stat.st_dev, stat.st_ino
+
+    def _refresh_handle(self):
+        """Follow Unity if it truncates/replaces Player.log during startup."""
+        try:
+            size = os.path.getsize(self.path)
+            position = self._fh.tell()
+        except (OSError, ValueError):
+            return
+        signature = self._signature()
+        if signature == self._file_signature and size >= position:
+            return
+        self._fh.close()
+        self._fh = open(self.path, "r", encoding="utf-8", errors="replace")
+        self._file_signature = signature
+        self._fh.seek(0)
+
     def read_new(self):
+        self._refresh_handle()
         text, self._pending = self._pending + self._fh.read(), ""
         return text
 

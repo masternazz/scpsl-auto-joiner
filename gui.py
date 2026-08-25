@@ -8,7 +8,7 @@ import winput
 winput.set_dpi_awareness()
 
 from PySide6.QtCore import QObject, QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QIcon, QPalette
+from PySide6.QtGui import QColor, QIcon, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QCompleter, QDialog, QDialogButtonBox, QFrame, QGridLayout,
     QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
@@ -22,15 +22,15 @@ import logwatch
 import resolver
 from app_paths import app_dir, resource_path
 
-BG = "#0b0f14"
-SURFACE = "#121820"
-CARD = "#18222d"
-CARD_HOVER = "#202d3b"
-LINE = "#2b3947"
-TEXT = "#edf3f7"
-MUTED = "#91a4b2"
-SUBTLE = "#667786"
-CYAN = "#54d7f4"
+BG = "#0d0a12"
+SURFACE = "#15111d"
+CARD = "#1d1728"
+CARD_HOVER = "#282038"
+LINE = "#3a2d4b"
+TEXT = "#f5effa"
+MUTED = "#b1a3bd"
+SUBTLE = "#7c6d89"
+CYAN = "#b186ff"
 AMBER = "#ffb74d"
 GREEN = "#68d391"
 RED = "#ef8585"
@@ -223,7 +223,7 @@ class MainWindow(QMainWindow):
         self.busy = False
         self.stop_event = threading.Event()
         self.servers = {}
-        self.setWindowTitle("SCP:SL Auto-Joiner")
+        self.setWindowTitle("SCP:SL // CONTAINMENT")
         self.setMinimumSize(760, 560)
         self.resize(1180, 760)
         self.setWindowIcon(QIcon(resource_path("assets/app.ico")))
@@ -243,13 +243,18 @@ class MainWindow(QMainWindow):
         side.setContentsMargins(22, 26, 18, 22)
         side.setSpacing(8)
         brand_row = QHBoxLayout()
-        mark = QLabel("S")
+        mark = QLabel()
         mark.setObjectName("brandMark")
         mark.setAlignment(Qt.AlignCenter)
+        pixmap = QPixmap(resource_path("assets/generated/containment-mark-purple.png"))
+        if pixmap.isNull():
+            mark.setText("S")
+        else:
+            mark.setPixmap(pixmap.scaled(38, 38, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         brand_row.addWidget(mark)
         brand = QVBoxLayout()
         brand.addWidget(label("SCP:SL", "brand"))
-        brand.addWidget(label("AUTO-JOINER", "brandSub"))
+        brand.addWidget(label("CONTAINMENT", "brandSub"))
         brand_row.addLayout(brand)
         side.addLayout(brand_row)
         rule = QFrame(); rule.setFrameShape(QFrame.HLine); rule.setObjectName("rule"); side.addWidget(rule); side.addSpacing(18)
@@ -684,15 +689,15 @@ QLabel[role='number'] {{ font-size: 13px; }}
 QLabel[role='warning'] {{ color: {AMBER}; font-weight: 600; }}
 QLabel[role='status'] {{ color: {TEXT}; font-size: 15px; }}
 QLabel[role='pill'] {{ color: {CYAN}; border: 1px solid #315a69; border-radius: 12px; padding: 4px 10px; font-size: 11px; font-weight: 700; }}
-QLabel[role='endpoint'] {{ background: #0e151c; color: {MUTED}; border-left: 2px solid {CYAN}; border-radius: 2px; padding: 8px 10px; }}
-QLabel#brandMark {{ color: {CYAN}; border: 1px solid {CYAN}; border-radius: 5px; font-size: 21px; font-weight: 700; min-width: 34px; max-width: 34px; min-height: 34px; max-height: 34px; }}
+QLabel[role='endpoint'] {{ background: #100c16; color: {MUTED}; border-left: 2px solid {CYAN}; border-radius: 2px; padding: 8px 10px; }}
+QLabel#brandMark {{ color: {CYAN}; border: 1px solid {CYAN}; border-radius: 5px; font-size: 21px; font-weight: 700; min-width: 40px; max-width: 40px; min-height: 40px; max-height: 40px; }}
 QFrame#rule {{ color: {LINE}; max-height: 1px; }}
 QPushButton {{ background: {CARD}; color: {TEXT}; border: 1px solid #435364; border-radius: 6px; padding: 11px 16px; }}
 QPushButton:hover {{ background: {CARD_HOVER}; border-color: {CYAN}; }}
-QPushButton:pressed {{ background: #26394b; }}
+QPushButton:pressed {{ background: #38264f; }}
 QPushButton:disabled {{ color: {SUBTLE}; border-color: {LINE}; }}
 QPushButton[kind='primary'] {{ background: {CYAN}; color: #071117; border-color: {CYAN}; font-weight: 700; }}
-QPushButton[kind='primary']:hover {{ background: #9aebfa; }}
+QPushButton[kind='primary']:hover {{ background: #d2b8ff; }}
 QPushButton[kind='danger'] {{ color: {RED}; border-color: #704449; }}
 QPushButton[kind='danger']:hover {{ background: #382328; border-color: {RED}; }}
 QPushButton[kind='danger']:disabled {{ background: {CARD}; color: {SUBTLE}; border-color: {LINE}; }}
@@ -700,12 +705,12 @@ QPushButton[kind='nav'] {{ background: transparent; color: {MUTED}; border: 0; t
 QPushButton[kind='nav']:hover, QPushButton[kind='nav'][active='true'] {{ background: {CARD}; color: {TEXT}; }}
 QPushButton#serverPickerButton {{ min-width: 50px; max-width: 50px; min-height: 50px; max-height: 50px; padding: 0; font-size: 20px; font-weight: 700; }}
 QPushButton#serverPickerButton:focus {{ border: 2px solid {CYAN}; }}
-QLineEdit, QComboBox, QTextEdit {{ background: #0e151c; color: {TEXT}; border: 1px solid #425363; border-radius: 6px; padding: 10px 12px; selection-background-color: #27677a; }}
+QLineEdit, QComboBox, QTextEdit {{ background: #100c16; color: {TEXT}; border: 1px solid #514264; border-radius: 6px; padding: 10px 12px; selection-background-color: #5d3b85; }}
 QLineEdit:focus, QComboBox:focus, QTextEdit:focus {{ border-color: {CYAN}; }}
 QComboBox::drop-down {{ border: 0; width: 30px; }}
 QComboBox#serverCombo::drop-down {{ border: 0; width: 0; }}
 QComboBox#serverCombo::down-arrow {{ image: none; width: 0; height: 0; }}
-QComboBox QAbstractItemView {{ background: {SURFACE}; color: {TEXT}; border: 1px solid #425363; outline: 0; padding: 6px; selection-background-color: #26394b; selection-color: {TEXT}; }}
+QComboBox QAbstractItemView {{ background: {SURFACE}; color: {TEXT}; border: 1px solid #514264; outline: 0; padding: 6px; selection-background-color: #38264f; selection-color: {TEXT}; }}
 QComboBox QAbstractItemView::item {{ min-height: 38px; padding: 8px 12px; }}
 QProgressBar {{ background: #0a121a; border: 0; border-radius: 3px; height: 6px; }}
 QProgressBar::chunk {{ background: {CYAN}; border-radius: 3px; }}

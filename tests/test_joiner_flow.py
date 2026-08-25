@@ -90,7 +90,7 @@ def test_automatic_layout_scales_to_offset_4k_window(monkeypatch):
 
     point = joiner.click_layout(123, "connect")
 
-    assert point == (2519, 1302)
+    assert point == (2135, 1238)
     assert clicks == [(123, *point)]
 
 
@@ -140,6 +140,7 @@ def test_full_run_retries_with_background_window_messages(monkeypatch):
     monkeypatch.setattr(joiner.winput, "post_click", lambda _hwnd, x, y: events.append(("click", x, y)))
     monkeypatch.setattr(joiner.winput, "replace_text", lambda _hwnd, text: events.append(("text", text)))
     monkeypatch.setattr(joiner.winput, "post_key_tap", lambda _hwnd, key: events.append(("key", key)))
+    monkeypatch.setattr(joiner.winput, "foreground_key_tap", lambda *_args: None)
     monkeypatch.setattr(joiner.notify, "notify", lambda _title, message: events.append(("notify", message)))
     monkeypatch.setattr(joiner.time, "sleep", lambda _seconds: None)
 
@@ -148,14 +149,18 @@ def test_full_run_retries_with_background_window_messages(monkeypatch):
     assert result == "success"
     assert events == [
         ("click", 120, 50),
-        ("click", 490, 180),
-        ("click", 590, 510),
+        ("click", 410, 190),
+        ("click", 500, 490),
         ("text", "1.2.3.4:7778"),
-        ("click", 630, 580),
-        ("click", 490, 180),
-        ("click", 590, 510),
+        ("click", 530, 550),
+        ("key", joiner.winput.VK_RETURN),
+        ("key", joiner.winput.VK_ESCAPE),
+        ("click", 120, 50),
+        ("click", 410, 190),
+        ("click", 500, 490),
         ("text", "1.2.3.4:7778"),
-        ("click", 630, 580),
+        ("click", 530, 550),
+        ("key", joiner.winput.VK_RETURN),
         ("notify", "Joined Canada #2!"),
     ]
 
@@ -198,10 +203,11 @@ def test_stop_during_retry_delay_prevents_another_click(monkeypatch):
     monkeypatch.setattr(joiner.winput, "post_click", lambda _hwnd, x, y: events.append(("click", x, y)))
     monkeypatch.setattr(joiner.winput, "replace_text", lambda _hwnd, text: events.append(("text", text)))
     monkeypatch.setattr(joiner.winput, "post_key_tap", lambda _hwnd, key: events.append(("key", key)))
+    monkeypatch.setattr(joiner.winput, "foreground_key_tap", lambda *_args: None)
     monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
 
     assert joiner.run("Canada #2", stop_event=stop) == "stopped"
-    assert events.count(("click", 630, 580)) == 1
+    assert events.count(("click", 530, 550)) == 1
 
 
 def test_rejected_server_reports_reason_and_two_second_retry(monkeypatch):
@@ -225,6 +231,8 @@ def test_rejected_server_reports_reason_and_two_second_retry(monkeypatch):
     monkeypatch.setattr(joiner.winput, "mouse_click", lambda *_args: (_ for _ in ()).throw(AssertionError("must not move the cursor")))
     monkeypatch.setattr(joiner.winput, "post_click", lambda *_args: None)
     monkeypatch.setattr(joiner.winput, "replace_text", lambda *_args: None)
+    monkeypatch.setattr(joiner.winput, "post_key_tap", lambda *_args: None)
+    monkeypatch.setattr(joiner.winput, "foreground_key_tap", lambda *_args: None)
     monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
     monkeypatch.setattr(joiner.time, "sleep", lambda seconds: sleeps.append(seconds))
 
