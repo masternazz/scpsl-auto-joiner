@@ -199,6 +199,29 @@ def test_settings_page_saves_timing_mode_and_coordinates(monkeypatch):
     window.close()
 
 
+def test_zero_limits_display_and_save_as_unlimited(monkeypatch):
+    qt_app = app()
+    cfg = gui.config_mod.DEFAULTS.copy() | {
+        "click_points": {k: v[:] for k, v in gui.config_mod.DEFAULTS["click_points"].items()},
+    }
+    saved = []
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: {})
+    monkeypatch.setattr(gui.config_mod, "load_config", lambda: cfg.copy() | {"click_points": {k: v[:] for k, v in cfg["click_points"].items()}})
+    monkeypatch.setattr(gui.config_mod, "save_config", lambda value: saved.append(value))
+    window = gui.MainWindow()
+
+    window.max_attempts.setValue(0)
+    window.max_minutes.setValue(0)
+    assert window.max_attempts.text() == "Unlimited"
+    assert window.max_minutes.text() == "Unlimited"
+    window.save_settings_button.click()
+    qt_app.processEvents()
+
+    assert saved[-1]["max_attempts"] == 0
+    assert saved[-1]["max_minutes"] == 0
+    window.close()
+
+
 def test_settings_actions_fit_at_minimum_window_width(monkeypatch):
     qt_app = app()
     monkeypatch.setattr(gui.resolver, "load_servers", lambda: {})
@@ -250,6 +273,10 @@ def test_saved_server_dropdown_browses_and_filters_without_rebuilding(monkeypatc
     monkeypatch.setattr(gui.resolver, "load_servers", lambda: servers)
     window = gui.MainWindow()
     original_model = window.server_box.model()
+
+    assert window.saved_servers_button.width() <= 56
+    assert window.saved_servers_button.accessibleName() == "Show saved servers"
+    assert window.server_count_label.text() == "2 SAVED"
 
     window.saved_servers_button.click()
     qt_app.processEvents()

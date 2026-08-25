@@ -30,8 +30,33 @@ def test_load_config_migrates_old_retry_delay_to_two_seconds(tmp_path):
 
     cfg = config_mod.load_config(path)
 
-    assert cfg["config_version"] == 2
+    assert cfg["config_version"] == 3
     assert cfg["retry_interval_s"] == 2
+
+
+def test_version_two_manual_mode_migrates_to_no_input_steam_mode(tmp_path):
+    path = str(tmp_path / "config.json")
+    config_mod.save_config({
+        "config_version": 2,
+        "navigation_mode": "manual",
+        "click_points": {},
+    }, path)
+
+    cfg = config_mod.load_config(path)
+
+    assert cfg["config_version"] == 3
+    assert cfg["navigation_mode"] == "automatic"
+
+
+def test_version_three_explicit_fallback_choice_is_preserved(tmp_path):
+    path = str(tmp_path / "config.json")
+    config_mod.save_config({
+        "config_version": 3,
+        "navigation_mode": "manual",
+        "click_points": {},
+    }, path)
+
+    assert config_mod.load_config(path)["navigation_mode"] == "manual"
 
 
 def test_calibrated_false_until_all_points_set(tmp_path):

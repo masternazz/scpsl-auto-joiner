@@ -199,8 +199,8 @@ class HelpDialog(QDialog):
         text = QTextEdit()
         text.setReadOnly(True)
         text.setPlainText(
-            "1. Automatic mode\n\n"
-            "By default, the app scales clicks to SCP:SL's current window. Different resolutions and borderless fullscreen layouts normally need no calibration.\n\n"
+            "1. Steam Direct Connect\n\n"
+            "By default, the app sends Northwood's supported Direct Connect URI through Steam. It does not click or type, and needs no calibration.\n\n"
             "2. Optional calibration\n\n"
             "If automatic navigation misses a control, use Calibrate controls. Start once, hover each requested game control, and press F8. The on-screen guide advances through all four steps automatically. F9 cancels.\n\n"
             "3. Remember a server\n\n"
@@ -311,14 +311,27 @@ class MainWindow(QMainWindow):
 
     def join_page(self):
         content, layout = self.page_content()
-        self.heading(layout, "CONTAINMENT OPERATIONS  /  READY", "Auto-Join", "Keep trying until a slot opens. The app drives Direct Connect and watches SCP:SL's own log for the result.")
+        self.heading(layout, "CONTAINMENT OPERATIONS  /  READY", "Auto-Join", "Keep trying until a slot opens. Steam Direct Connect leaves your mouse and keyboard free.")
         destination, box = self.card()
         box.addWidget(label("DESTINATION", "eyebrow"))
         box.addWidget(label("Choose a saved server", "section"))
         box.addWidget(label("Saved names stay local and can be reused whenever you play.", "body"))
         box.addSpacing(8)
-        box.addWidget(label("SERVER NAME", "fieldLabel"))
+        selector_header = QHBoxLayout()
+        selector_header.addWidget(label("SERVER NAME", "fieldLabel"))
+        selector_header.addStretch()
+        self.server_count_label = label("0 SAVED", "eyebrow")
+        self.server_count_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        selector_header.addWidget(self.server_count_label)
+        box.addLayout(selector_header)
         self.server_box = QComboBox(); self.server_box.setEditable(True); self.server_box.setInsertPolicy(QComboBox.NoInsert); self.server_box.setPlaceholderText("Start typing a saved server…")
+        self.server_box.setObjectName("serverCombo")
+        self.server_box.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.server_box.setMinimumContentsLength(8)
+        self.server_box.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.server_box.setMinimumHeight(50)
+        self.server_box.setAccessibleName("Saved server name")
+        self.server_box.setToolTip("Type to search saved servers")
         self.server_completer = QCompleter(self.server_box.model(), self.server_box)
         self.server_completer.setCaseSensitivity(Qt.CaseInsensitive)
         self.server_completer.setFilterMode(Qt.MatchContains)
@@ -326,11 +339,18 @@ class MainWindow(QMainWindow):
         self.server_box.setCompleter(self.server_completer)
         self.server_box.lineEdit().textEdited.connect(self.show_server_suggestions)
         self.server_box.currentTextChanged.connect(self.update_endpoint_preview)
-        self.saved_servers_button = QPushButton("Saved servers  ▾")
+        self.saved_servers_button = QPushButton("▾")
+        self.saved_servers_button.setObjectName("serverPickerButton")
+        self.saved_servers_button.setFixedSize(50, 50)
+        self.saved_servers_button.setAccessibleName("Show saved servers")
+        self.saved_servers_button.setToolTip("Show all saved servers")
         self.saved_servers_button.clicked.connect(self.server_box.showPopup)
-        box.addWidget(self.server_box)
-        box.addWidget(self.saved_servers_button)
+        picker_row = QHBoxLayout(); picker_row.setSpacing(8)
+        picker_row.addWidget(self.server_box, 1)
+        picker_row.addWidget(self.saved_servers_button)
+        box.addLayout(picker_row)
         self.endpoint_preview = label("No saved server selected.", "helper")
+        self.endpoint_preview.setProperty("role", "endpoint")
         box.addWidget(self.endpoint_preview)
         self.join_button = QPushButton("Start auto-join"); self.join_button.setProperty("kind", "primary")
         self.remember_button = QPushButton("Remember a server")
@@ -346,7 +366,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(destination)
         activity, activity_box = self.card()
         row = QHBoxLayout(); row.addWidget(label("LIVE FEED", "eyebrow")); row.addStretch(); self.feed = label("IDLE", "pill"); row.addWidget(self.feed); activity_box.addLayout(row)
-        self.status = label("Ready. Choose a server and start. Automatic controls are enabled.", "status")
+        self.status = label("Ready. Steam Direct Connect is enabled; no mouse or keyboard input is used.", "status")
         activity_box.addWidget(self.status)
         self.progress = QProgressBar(); self.progress.setRange(0, 0); self.progress.hide(); activity_box.addWidget(self.progress)
         layout.addWidget(activity)
@@ -355,16 +375,16 @@ class MainWindow(QMainWindow):
 
     def setup_page(self):
         content, layout = self.page_content()
-        self.heading(layout, "OPTIONAL FALLBACK  /  LOCAL", "Calibration", "Automatic window-relative clicks are used first. Capture four controls only if your display needs a manual fallback.")
+        self.heading(layout, "OPTIONAL FALLBACK  /  LOCAL", "Calibration", "Steam Direct Connect needs no calibration. Capture four controls only for the window-message fallback.")
         card, box = self.card()
         box.addWidget(label("CONTROL SETUP", "eyebrow"))
         box.addWidget(label("Calibrate this computer", "section"))
         box.addWidget(label("Start one guided session, hover Servers, Direct Connect, the IP/Hostname field, and Connect in order, and press F8 for each. The guide advances automatically; F9 cancels.", "body"))
-        row = QHBoxLayout(); self.calibration_status = label("Automatic window-relative controls enabled.", "warning"); row.addWidget(self.calibration_status); row.addStretch(); box.addLayout(row)
+        row = QHBoxLayout(); self.calibration_status = label("Steam Direct Connect enabled — no calibration needed.", "warning"); row.addWidget(self.calibration_status); row.addStretch(); box.addLayout(row)
         button = QPushButton("Open calibration")
         button.setProperty("kind", "primary"); button.clicked.connect(self.calibrate); box.addWidget(button)
         layout.addWidget(card)
-        info, info_box = self.card(); info_box.addWidget(label("WHY THIS EXISTS", "eyebrow")); info_box.addWidget(label("Two navigation modes", "section")); info_box.addWidget(label("Automatic mode scales to the current SCP:SL window. Manual mode is a precise per-computer fallback when a display or game layout behaves differently.", "body")); layout.addWidget(info); layout.addStretch()
+        info, info_box = self.card(); info_box.addWidget(label("WHY THIS EXISTS", "eyebrow")); info_box.addWidget(label("Two connection modes", "section")); info_box.addWidget(label("Steam Direct Connect is the input-free default. The calibrated window-message mode is an optional fallback if Steam cannot deliver a retry on this computer.", "body")); layout.addWidget(info); layout.addStretch()
         return self.scroll_page(content)
 
     def settings_page(self):
@@ -374,10 +394,10 @@ class MainWindow(QMainWindow):
         controls, box = self.card()
         box.addWidget(label("NAVIGATION", "eyebrow"))
         box.addWidget(label("Control mode", "section"))
-        box.addWidget(label("Automatic scales with the SCP:SL window. Manual uses the four physical screen positions captured by calibration.", "body"))
+        box.addWidget(label("Steam Direct Connect uses no simulated input. The fallback posts controls only to SCP:SL and uses four calibrated positions.", "body"))
         self.navigation_mode = QComboBox()
-        self.navigation_mode.addItem("Automatic — window-relative (recommended)", "automatic")
-        self.navigation_mode.addItem("Manual — calibrated physical pixels", "manual")
+        self.navigation_mode.addItem("Steam Direct Connect — no input (recommended)", "automatic")
+        self.navigation_mode.addItem("Window-message fallback — calibrated", "manual")
         self.navigation_mode.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.navigation_mode.setMinimumContentsLength(12)
         self.navigation_mode.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
@@ -392,15 +412,17 @@ class MainWindow(QMainWindow):
         timing_box.addWidget(label("The app confirms joined/rejected states from Player.log, so these values do not depend on screen resolution.", "body"))
         timing_grid = QGridLayout(); timing_grid.setHorizontalSpacing(18); timing_grid.setVerticalSpacing(10)
         fields = [
-            ("Retry delay", "Seconds between rejected attempts", "retry_interval", 1, 60),
-            ("Connection timeout", "Seconds allowed for one attempt", "attempt_timeout", 5, 180),
-            ("Maximum attempts", "Stop after this many tries", "max_attempts", 1, 1000),
-            ("Maximum runtime", "Stop after this many minutes", "max_minutes", 1, 240),
+            ("Retry delay", "Seconds between rejected attempts", "retry_interval", 1, 60, None),
+            ("Connection timeout", "Seconds allowed for one attempt", "attempt_timeout", 5, 180, None),
+            ("Maximum attempts", "0 = unlimited attempts", "max_attempts", 0, 1_000_000, "Unlimited"),
+            ("Maximum runtime", "0 = unlimited time", "max_minutes", 0, 10_080, "Unlimited"),
         ]
-        for row, (title, hint, attr, minimum, maximum) in enumerate(fields):
+        for row, (title, hint, attr, minimum, maximum, special_text) in enumerate(fields):
             text_box = QVBoxLayout(); text_box.setSpacing(1); text_box.addWidget(label(title, "body")); text_box.addWidget(label(hint, "helper"))
             timing_grid.addLayout(text_box, row, 0)
-            spin = QSpinBox(); spin.setRange(minimum, maximum); spin.setMinimumWidth(130)
+            spin = QSpinBox(); spin.setRange(minimum, maximum); spin.setMinimumWidth(150); spin.setAccessibleName(title)
+            if special_text:
+                spin.setSpecialValueText(special_text)
             setattr(self, attr, spin); timing_grid.addWidget(spin, row, 1)
         timing_grid.setColumnStretch(0, 1)
         timing_box.addLayout(timing_grid)
@@ -440,7 +462,7 @@ class MainWindow(QMainWindow):
         actions_box.addWidget(label("APPLY", "eyebrow"))
         self.save_settings_button = QPushButton("Save settings"); self.save_settings_button.setProperty("kind", "primary")
         self.save_settings_button.clicked.connect(self.save_settings)
-        self.automatic_button = QPushButton("Use automatic controls"); self.automatic_button.clicked.connect(self.use_automatic_controls)
+        self.automatic_button = QPushButton("Use Steam Direct Connect"); self.automatic_button.clicked.connect(self.use_automatic_controls)
         self.settings_calibration_button = QPushButton("Open calibration"); self.settings_calibration_button.clicked.connect(self.calibrate)
         actions_box.addWidget(self.save_settings_button)
         actions_box.addWidget(self.automatic_button)
@@ -453,11 +475,12 @@ class MainWindow(QMainWindow):
         content, layout = self.page_content()
         self.heading(layout, "FIELD MANUAL  /  REFERENCE", "How it works", "A plain-language guide to every button and what the automation is doing.")
         for number, title, text in [
-            ("01", "Automatic first", "Clicks scale to the current SCP:SL window, so different resolutions and borderless fullscreen layouts normally need no setup."),
+            ("01", "No-input connection", "The default sends SCP:SL's supported Direct Connect URI through Steam. It does not simulate mouse clicks or keyboard entry."),
             ("02", "Optional calibration", "Start once, hover each requested control, and press F8. A click-through guide advances through all four controls automatically; F9 cancels."),
             ("03", "Remember a server", "Start the watcher and join normally. Player.log supplies the endpoint, then the app asks the server directly for its public name and pre-fills the popup."),
             ("04", "Reliable join detection", "Joined and rejected states come from SCP:SL's own Player.log. This is more reliable than OCR across 4K scaling, animations, and UI changes."),
-            ("05", "What it does not do", "No memory reading, packet manipulation, OCR, or anti-cheat bypass. It sends normal Windows input and reads Player.log."),
+            ("05", "Unlimited mode", "Set Maximum attempts or Maximum runtime to 0 to disable that limit. Set both to 0 to retry until joined or manually stopped."),
+            ("06", "What it does not do", "No memory reading, packet manipulation, OCR, or anti-cheat bypass. It uses Steam Direct Connect and reads Player.log."),
         ]:
             card, box = self.card(); box.addWidget(label(number, "number")); box.addWidget(label(title, "section")); box.addWidget(label(text, "body")); layout.addWidget(card)
         layout.addStretch()
@@ -472,12 +495,15 @@ class MainWindow(QMainWindow):
         current = self.server_box.currentText()
         self.servers = resolver.load_servers()
         self.server_box.clear(); self.server_box.addItems(sorted(self.servers))
+        count = len(self.servers)
+        self.server_count_label.setText(f"{count} SAVED")
+        self.saved_servers_button.setEnabled(bool(count))
         if current in self.servers:
             self.server_box.setCurrentText(current)
         self.update_endpoint_preview(self.server_box.currentText())
         cfg = config_mod.load_config(); manual = cfg.get("navigation_mode") == "manual" and config_mod.calibrated(cfg)
         legacy = cfg.get("navigation_mode") == "manual" and not config_mod.calibrated(cfg)
-        text = "Manual calibration saved and active." if manual else ("Old DPI-scaled calibration disabled — calibrate once again." if legacy else "Automatic window-relative controls enabled.")
+        text = "Window-message fallback saved and active." if manual else ("Old DPI-scaled calibration disabled — calibrate once again." if legacy else "Steam Direct Connect enabled — no calibration needed.")
         self.calibration_status.setText(text)
         self.load_settings_form(cfg)
 
@@ -496,7 +522,7 @@ class MainWindow(QMainWindow):
         if cfg.get("navigation_mode") == "manual" and not config_mod.calibrated(cfg):
             self.settings_feedback.setText("Your previous DPI-scaled calibration is disabled. Run calibration once to capture correct 4K physical pixels.")
         else:
-            self.settings_feedback.setText("Manual calibration is active." if mode == "manual" else "Automatic window-relative controls are active.")
+            self.settings_feedback.setText("Window-message fallback is active." if mode == "manual" else "Steam Direct Connect is active; no simulated input is used.")
 
     def save_settings(self):
         cfg = config_mod.load_config()
@@ -511,16 +537,19 @@ class MainWindow(QMainWindow):
             self.settings_feedback.setText("Manual mode needs a fresh guided calibration before it can be enabled.")
             return
         config_mod.save_config(cfg)
-        self.settings_feedback.setText("Settings saved.")
-        self.calibration_status.setText("Manual calibration saved and active." if cfg["navigation_mode"] == "manual" else "Automatic window-relative controls enabled.")
+        if cfg["max_attempts"] == 0 and cfg["max_minutes"] == 0:
+            self.settings_feedback.setText("Settings saved. Auto-join will run until joined or stopped.")
+        else:
+            self.settings_feedback.setText("Settings saved.")
+        self.calibration_status.setText("Window-message fallback saved and active." if cfg["navigation_mode"] == "manual" else "Steam Direct Connect enabled — no calibration needed.")
 
     def use_automatic_controls(self):
         cfg = config_mod.load_config()
         cfg["navigation_mode"] = "automatic"
         config_mod.save_config(cfg)
         self.load_settings_form(cfg)
-        self.calibration_status.setText("Automatic window-relative controls enabled.")
-        self.settings_feedback.setText("Automatic controls enabled and saved.")
+        self.calibration_status.setText("Steam Direct Connect enabled — no calibration needed.")
+        self.settings_feedback.setText("Steam Direct Connect enabled and saved. No simulated input will be used.")
 
     def show_server_suggestions(self, query):
         self.server_completer.setCompletionPrefix(query)
@@ -624,6 +653,7 @@ QLabel[role='number'] {{ font-size: 13px; }}
 QLabel[role='warning'] {{ color: {AMBER}; font-weight: 600; }}
 QLabel[role='status'] {{ color: {TEXT}; font-size: 15px; }}
 QLabel[role='pill'] {{ color: {CYAN}; border: 1px solid #315a69; border-radius: 12px; padding: 4px 10px; font-size: 11px; font-weight: 700; }}
+QLabel[role='endpoint'] {{ background: #0e151c; color: {MUTED}; border-left: 2px solid {CYAN}; border-radius: 2px; padding: 8px 10px; }}
 QLabel#brandMark {{ color: {CYAN}; border: 1px solid {CYAN}; border-radius: 5px; font-size: 21px; font-weight: 700; min-width: 34px; max-width: 34px; min-height: 34px; max-height: 34px; }}
 QFrame#rule {{ color: {LINE}; max-height: 1px; }}
 QPushButton {{ background: {CARD}; color: {TEXT}; border: 1px solid #435364; border-radius: 6px; padding: 11px 16px; }}
@@ -634,9 +664,15 @@ QPushButton[kind='primary'] {{ background: {CYAN}; color: #071117; border-color:
 QPushButton[kind='primary']:hover {{ background: #9aebfa; }}
 QPushButton[kind='nav'] {{ background: transparent; color: {MUTED}; border: 0; text-align: left; padding: 12px 10px; }}
 QPushButton[kind='nav']:hover, QPushButton[kind='nav'][active='true'] {{ background: {CARD}; color: {TEXT}; }}
+QPushButton#serverPickerButton {{ min-width: 50px; max-width: 50px; min-height: 50px; max-height: 50px; padding: 0; font-size: 20px; font-weight: 700; }}
+QPushButton#serverPickerButton:focus {{ border: 2px solid {CYAN}; }}
 QLineEdit, QComboBox, QTextEdit {{ background: #0e151c; color: {TEXT}; border: 1px solid #425363; border-radius: 6px; padding: 10px 12px; selection-background-color: #27677a; }}
 QLineEdit:focus, QComboBox:focus, QTextEdit:focus {{ border-color: {CYAN}; }}
 QComboBox::drop-down {{ border: 0; width: 30px; }}
+QComboBox#serverCombo::drop-down {{ border: 0; width: 0; }}
+QComboBox#serverCombo::down-arrow {{ image: none; width: 0; height: 0; }}
+QComboBox QAbstractItemView {{ background: {SURFACE}; color: {TEXT}; border: 1px solid #425363; outline: 0; padding: 6px; selection-background-color: #26394b; selection-color: {TEXT}; }}
+QComboBox QAbstractItemView::item {{ min-height: 38px; padding: 8px 12px; }}
 QProgressBar {{ background: #0a121a; border: 0; border-radius: 3px; height: 6px; }}
 QProgressBar::chunk {{ background: {CYAN}; border-radius: 3px; }}
 QScrollBar:vertical {{ background: transparent; width: 12px; margin: 2px; }}

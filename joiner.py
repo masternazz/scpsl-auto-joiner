@@ -13,6 +13,7 @@ from app_paths import app_dir
 
 GAME_TITLE = "SCP: Secret Laboratory"
 STEAM_URI = "steam://rungameid/700330"
+STEAM_CONNECT_URI = "steam://connect/{host}:{port}"
 APP_NAME = "SCP:SL Auto-Joiner"
 ERROR_LOG_PATH = os.path.join(app_dir(), "autojoiner.log")
 
@@ -44,20 +45,6 @@ def ensure_game_running(watcher, launch_timeout=90, stop_event=None):
     return hwnd
 
 
-def click_with_fallback(hwnd, point, watcher, confirm_marker, confirm_timeout=5):
-    """Click `point` via background PostMessage; if `confirm_marker` doesn't
-    show up in the log within confirm_timeout, retry once via a
-    focus-stealing SendInput click instead. Returns True if either click was
-    confirmed."""
-    x, y = point
-    winput.post_click(hwnd, x, y)
-    if watcher.wait_for_marker(confirm_marker, confirm_timeout):
-        return True
-    winput.focus_window(hwnd)
-    winput.mouse_click(x, y)
-    return watcher.wait_for_marker(confirm_marker, confirm_timeout)
-
-
 def layout_point(hwnd, name):
     rect = winput.get_window_rect(hwnd)
     if not rect:
@@ -79,8 +66,9 @@ def click_layout(hwnd, name):
         point = tuple(cfg["click_points"][manual_names[name]])
     else:
         point = layout_point(hwnd, name)
-    winput.focus_window(hwnd)
-    winput.mouse_click(*point)
+    # Target only SCP:SL's window-message queue. This leaves the foreground
+    # app, physical cursor, and keyboard alone.
+    winput.post_click(hwnd, *point)
     return point
 
 
@@ -99,12 +87,21 @@ def prepare_direct_connect(hwnd, ip, port, open_servers=True):
     winput.replace_text(hwnd, f"{ip}:{port}")
 
 
-def attempt_join(hwnd, cfg, watcher, stop_event=None):
-    click_layout(hwnd, "connect")
+def connect_once(hwnd, cfg, watcher, ip, port, open_servers=True, stop_event=None):
+    """Start one connection without global input, then read its result.
+
+    Automatic mode uses Northwood's supported Steam Direct Connect URI.
+    Manual mode remains a calibrated, targeted-window fallback.
+    """
+    if cfg.get("navigation_mode", "automatic") == "automatic":
+        os.startfile(STEAM_CONNECT_URI.format(host=ip, port=port))
+    else:
+        prepare_direct_connect(hwnd, ip, port, open_servers=open_servers)
+        click_layout(hwnd, "connect")
     if not watcher.wait_for_marker(logwatch.CONNECTING_MARK, 5, stop_event=stop_event):
         if stop_event and stop_event.is_set():
             return "stopped"
-        raise JoinError("SCP:SL did not start connecting. Check the game layout.")
+        raise JoinError("SCP:SL did not start connecting. Try the calibrated window-message fallback in Settings.")
     return watcher.wait_for_outcome(cfg["attempt_timeout_s"], stop_event=stop_event)
 
 
@@ -136,19 +133,26 @@ def run(server_name, on_status=None, stop_event=None):
 
         unclear = 0
         attempts = 0
-        deadline = time.monotonic() + cfg["max_minutes"] * 60
-        while attempts < cfg["max_attempts"] and time.monotonic() < deadline:
+        max_attempts = int(cfg["max_attempts"])
+        max_minutes = int(cfg["max_minutes"])
+        deadline = None if max_minutes == 0 else time.monotonic() + max_minutes * 60
+        while (
+            (max_attempts == 0 or attempts < max_attempts)
+            and (deadline is None or time.monotonic() < deadline)
+        ):
             if stop_event and stop_event.is_set():
                 status("Stop requested.")
                 return "stopped"
             attempts += 1
             status(f"Attempt {attempts}: connecting to {name} ({ip}:{port})...")
             try:
-                # A rejected Direct Connect attempt closes its dialog and
-                # returns to Servers. Only the first attempt needs to leave
-                # News; every retry reopens and refills Direct Connect.
-                prepare_direct_connect(hwnd, ip, port, open_servers=(attempts == 1))
-                outcome = attempt_join(hwnd, cfg, watcher, stop_event)
+                # Steam Direct Connect needs no UI state. The calibrated
+                # fallback returns to Servers after a rejection, so only its
+                # first attempt needs to leave News.
+                outcome = connect_once(
+                    hwnd, cfg, watcher, ip, port,
+                    open_servers=(attempts == 1), stop_event=stop_event,
+                )
             except JoinError as e:
                 notify.notify(APP_NAME, str(e))
                 return "unclear"

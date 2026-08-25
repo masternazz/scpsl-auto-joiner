@@ -7,7 +7,7 @@ import os
 from app_paths import app_dir
 
 CONFIG_PATH = os.path.join(app_dir(), "config.json")
-CONFIG_VERSION = 2
+CONFIG_VERSION = 3
 
 DEFAULTS = {
     "config_version": CONFIG_VERSION,
@@ -49,11 +49,17 @@ def load_config(path=None):
     # Merge saved click_points into the deepcopied defaults
     if "click_points" in data:
         merged["click_points"].update(data["click_points"])
-    if int(data.get("config_version", 1)) < CONFIG_VERSION:
+    saved_version = int(data.get("config_version", 1))
+    if saved_version < CONFIG_VERSION:
         # Version 1 shipped with a six-second default. Preserve custom values,
         # but migrate that old default for existing users.
         if data.get("retry_interval_s", 6) == 6:
             merged["retry_interval_s"] = 2
+        # Version 3 replaces menu automation with Northwood's supported Steam
+        # Direct Connect URI. Move old installs to that no-input default once;
+        # an explicit fallback choice made on v3 remains untouched.
+        if saved_version < 3:
+            merged["navigation_mode"] = "automatic"
         merged["config_version"] = CONFIG_VERSION
         save_config(merged, path)
     return merged
