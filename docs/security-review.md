@@ -2,13 +2,13 @@
 
 Review date: 2026-08-25
 
-This review covers the source tree, the `v0.2.0` Windows build, and the Python dependencies listed in `requirements.txt`. It is a focused application review, not a formal penetration test or a guarantee that third-party binaries are safe.
+This review covers the source tree, the `v0.2.1` Windows build, and the Python dependencies listed in `requirements.txt`. It is a focused application review, not a formal penetration test or a guarantee that third-party binaries are safe.
 
 ## Findings
 
 No high or medium-risk findings were identified in the reviewed code.
 
-The only network request is the update check. It sends a `GET` request over HTTPS to the project’s GitHub Releases API. It does not send saved servers, game logs, calibration, or other local data. The displayed update link is accepted only when it points to this project’s GitHub Releases path.
+The only network request is the update check and an explicitly approved update download. Both use HTTPS and GitHub-hosted URLs. The app verifies the downloaded asset against the SHA-256 digest returned by the GitHub API before launching it. It does not send saved servers, game logs, calibration, or other local data.
 
 The game launch path starts the SCP:SL executable found in Steam libraries with fixed arguments. It does not execute a server-provided command, shell command, script, or downloaded file.
 
@@ -27,7 +27,9 @@ No known vulnerabilities found
 
 The portable ZIP and setup installer contain a PyInstaller `onedir` build. The `_internal` directory contains Python, Qt, and runtime libraries required by the executable. Removing it breaks the application.
 
-The Windows packages are not code-signed. Windows SmartScreen or antivirus software may show a reputation warning for an unsigned PyInstaller application. Verify the SHA-256 checksum published with each release before running a downloaded package.
+The Windows packages are not code-signed. Windows SmartScreen or antivirus software may show a reputation warning for an unsigned PyInstaller application. Verify the SHA-256 checksum published with each release before running a downloaded package. The automatic updater performs this checksum verification itself.
+
+For updates, the portable helper waits for the running app to exit, validates every ZIP path before extraction, replaces only the packaged app directory, and restarts the same executable. The setup path uses Inno Setup's per-user installer with no administrator requirement.
 
 ## Safe-use boundaries
 

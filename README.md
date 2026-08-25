@@ -29,7 +29,7 @@ The portable ZIP runs from any folder. The setup installer creates a per-user in
 
 ## Requirements
 
-- Windows 10 or Windows 11
+- 64-bit Windows 10 version 1809 (build 17763) or later, or Windows 11
 - SCP: Secret Laboratory installed through Steam
 - Permission to join the selected server
 - Borderless or windowed SCP:SL is recommended for the most reliable background interaction
@@ -46,7 +46,7 @@ The app does not use OCR, read game memory, inject into the game, manipulate pac
 
 The app can launch SCP:SL automatically. On the first run, open **Calibration** if automatic controls do not match your game layout. Move the pointer over each named control and capture it without clicking the game. Calibration is stored per computer and should be repeated after changing display scaling, resolution, or the game window layout.
 
-The app checks the public GitHub Releases endpoint in the background at startup. If a newer release exists, the Auto-Join page shows a download link. A failed or offline check does not block the app.
+The app checks the public GitHub Releases endpoint in the background at startup. If a newer release exists, it asks whether to install it. Enable **Install updates automatically** in Settings to approve verified releases without another prompt. The app downloads only GitHub-hosted assets, verifies their SHA-256 digest, installs the update, and restarts itself. A failed or offline check does not block the app.
 
 ## Settings
 
@@ -57,8 +57,11 @@ The app exposes these controls:
 - **Connection timeout**: Maximum time allowed for one attempt
 - **Maximum attempts**: Stop after this many attempts; `0` means unlimited
 - **Maximum runtime**: Stop after this many minutes; `0` means unlimited
+- **Accent color**: Choose violet, cyan, amber, green, or red for the interface
 
 When both limits are `0`, auto-join continues until the server accepts the connection or you press **Stop**.
+
+Windows 10 is a supported target; the installer refuses older Windows versions so the packaged Qt runtime is not deployed onto an unsupported system. Windows notifications use the native toast path when available, with the in-app live feed as a fallback.
 
 ## How results are detected
 

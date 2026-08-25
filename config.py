@@ -21,6 +21,8 @@ DEFAULTS = {
     "max_unclear": 3,
     "max_attempts": 100,
     "max_minutes": 30,
+    "auto_update": False,
+    "accent": "violet",
     "click_points": {
         "play": [0, 0],
         "servers_tab": [0, 0],

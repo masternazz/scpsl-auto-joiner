@@ -20,10 +20,9 @@ class Response:
 def test_new_release_is_returned(monkeypatch):
     monkeypatch.setattr(updater.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
     monkeypatch.setattr(updater, "CURRENT_VERSION", "0.1.0")
-    assert updater.check_for_update() == {
-        "version": "0.2.0",
-        "url": updater.RELEASES_PAGE,
-    }
+    result = updater.check_for_update()
+    assert result["version"] == "0.2.0"
+    assert result["url"] == updater.RELEASES_PAGE
 
 
 def test_current_release_is_not_reported(monkeypatch):

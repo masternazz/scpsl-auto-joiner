@@ -1,6 +1,7 @@
 """Crisp, DPI-aware Qt desktop UI for the SCP:SL Auto-Joiner."""
 import os
 import threading
+import time
 from html import escape
 
 # Set the process coordinate system before Qt creates any windows. Native
@@ -14,7 +15,7 @@ from PySide6.QtWidgets import (
     QApplication, QComboBox, QCompleter, QDialog, QDialogButtonBox, QFrame, QGridLayout,
     QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
     QProgressBar, QScrollArea, QSizePolicy, QSpacerItem, QStackedWidget,
-    QSpinBox, QTextEdit, QVBoxLayout, QWidget,
+    QCheckBox, QSpinBox, QTextEdit, QVBoxLayout, QWidget,
 )
 
 import config as config_mod
@@ -36,13 +37,27 @@ CYAN = "#b186ff"
 AMBER = "#ffb74d"
 GREEN = "#68d391"
 RED = "#ef8585"
+ACCENT_OPTIONS = {
+    "violet": ("Violet", "#b186ff"),
+    "cyan": ("Cyan", "#46d7e9"),
+    "amber": ("Amber", "#ffb74d"),
+    "green": ("Green", "#68d391"),
+    "red": ("Red", "#ef8585"),
+}
+
+
+def set_accent(name):
+    global CYAN
+    CYAN = ACCENT_OPTIONS.get(name, ACCENT_OPTIONS["violet"])[1]
 
 
 class Bridge(QObject):
     status = Signal(str)
     busy = Signal(bool)
     saved = Signal(str, str)
-    update_available = Signal(str, str)
+    update_available = Signal(object)
+    update_finished = Signal(str, bool)
+    restart_requested = Signal()
 
 
 def label(text, style="body"):
@@ -224,6 +239,8 @@ class MainWindow(QMainWindow):
         self.bridge.busy.connect(self.set_busy)
         self.bridge.saved.connect(self.server_saved)
         self.bridge.update_available.connect(self.show_update_notice)
+        self.bridge.update_finished.connect(self.update_finished_notice)
+        self.bridge.restart_requested.connect(QApplication.quit)
         self.busy = False
         self.stop_event = threading.Event()
         self.servers = {}
@@ -300,6 +317,7 @@ class MainWindow(QMainWindow):
     def page_content(self):
         content = QWidget()
         content.setObjectName("page")
+        content.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         layout = QVBoxLayout(content)
         layout.setContentsMargins(46, 42, 46, 54)
         layout.setSpacing(16)
@@ -391,7 +409,21 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout(); row.addWidget(label("LIVE FEED", "eyebrow")); row.addStretch(); self.feed = label("IDLE", "pill"); row.addWidget(self.feed); activity_box.addLayout(row)
         self.status = label("Ready. Automatic direct start and background retries are enabled.", "status")
         activity_box.addWidget(self.status)
+        stage_row = QHBoxLayout(); stage_row.setSpacing(6)
+        self.stage_labels = {}
+        for stage in ("SELECT", "LAUNCH", "CONNECT", "RETRY", "JOINED"):
+            stage_label = label(stage, "stage")
+            stage_label.setAlignment(Qt.AlignCenter)
+            stage_row.addWidget(stage_label, 1)
+            self.stage_labels[stage] = stage_label
+        activity_box.addLayout(stage_row)
         self.progress = QProgressBar(); self.progress.setRange(0, 0); self.progress.hide(); activity_box.addWidget(self.progress)
+        self.live_log = QTextEdit()
+        self.live_log.setReadOnly(True)
+        self.live_log.setObjectName("liveLog")
+        self.live_log.setPlaceholderText("Join activity will appear here…")
+        self.live_log.setMaximumHeight(142)
+        activity_box.addWidget(self.live_log)
         layout.addWidget(activity)
         layout.addStretch()
         return self.scroll_page(content)
@@ -475,7 +507,9 @@ class MainWindow(QMainWindow):
         storage_box.addWidget(label("APP DATA", "eyebrow"))
         storage_box.addWidget(label("One local storage folder", "section"))
         storage_box.addWidget(label("Saved server names, IP addresses, ports, settings, calibration, and the error log stay together here:", "body"))
-        storage_box.addWidget(label(app_dir(), "helper"))
+        storage_path = label("Stored locally in your AppData folder.", "helper")
+        storage_path.setToolTip(app_dir())
+        storage_box.addWidget(storage_path)
         self.open_data_button = QPushButton("Open AppData folder")
         self.open_data_button.clicked.connect(self.open_data_folder)
         storage_box.addWidget(self.open_data_button)
@@ -483,6 +517,22 @@ class MainWindow(QMainWindow):
 
         actions, actions_box = self.card()
         actions_box.addWidget(label("APPLY", "eyebrow"))
+        self.auto_update_checkbox = QCheckBox("Install updates automatically")
+        self.auto_update_checkbox.setAccessibleName("Install updates automatically")
+        actions_box.addWidget(self.auto_update_checkbox)
+        actions_box.addWidget(label("When enabled, a verified GitHub release installs and restarts the app without another click.", "helper"))
+        color_row = QHBoxLayout()
+        color_text = QVBoxLayout(); color_text.setSpacing(1)
+        color_text.addWidget(label("Accent color", "body"))
+        color_text.addWidget(label("Applied when you save settings.", "helper"))
+        color_row.addLayout(color_text, 1)
+        self.accent_box = QComboBox()
+        for key, (title, _) in ACCENT_OPTIONS.items():
+            self.accent_box.addItem(title, key)
+        self.accent_box.setMinimumWidth(170)
+        self.accent_box.currentIndexChanged.connect(lambda _: self.preview_accent())
+        color_row.addWidget(self.accent_box)
+        actions_box.addLayout(color_row)
         self.save_settings_button = QPushButton("Save settings"); self.save_settings_button.setProperty("kind", "primary")
         self.save_settings_button.clicked.connect(self.save_settings)
         self.automatic_button = QPushButton("Use automatic scaling"); self.automatic_button.clicked.connect(self.use_automatic_controls)
@@ -540,6 +590,10 @@ class MainWindow(QMainWindow):
         self.attempt_timeout.setValue(int(cfg.get("attempt_timeout_s", config_mod.DEFAULTS["attempt_timeout_s"])))
         self.max_attempts.setValue(int(cfg.get("max_attempts", config_mod.DEFAULTS["max_attempts"])))
         self.max_minutes.setValue(int(cfg.get("max_minutes", config_mod.DEFAULTS["max_minutes"])))
+        self.auto_update_checkbox.setChecked(bool(cfg.get("auto_update", False)))
+        accent = cfg.get("accent", "violet")
+        index = self.accent_box.findData(accent)
+        self.accent_box.setCurrentIndex(index if index >= 0 else 0)
         for key, (x_spin, y_spin) in self.point_inputs.items():
             x, y = cfg["click_points"].get(key, (0, 0))
             x_spin.setValue(int(x)); y_spin.setValue(int(y))
@@ -555,12 +609,15 @@ class MainWindow(QMainWindow):
         cfg["attempt_timeout_s"] = self.attempt_timeout.value()
         cfg["max_attempts"] = self.max_attempts.value()
         cfg["max_minutes"] = self.max_minutes.value()
+        cfg["auto_update"] = self.auto_update_checkbox.isChecked()
+        cfg["accent"] = self.accent_box.currentData() or "violet"
         for key, (x_spin, y_spin) in self.point_inputs.items():
             cfg["click_points"][key] = [x_spin.value(), y_spin.value()]
         if cfg["navigation_mode"] == "manual" and not config_mod.calibrated(cfg):
             self.settings_feedback.setText("Manual mode needs a fresh guided calibration before it can be enabled.")
             return
         config_mod.save_config(cfg)
+        self.apply_accent(cfg["accent"])
         if cfg["max_attempts"] == 0 and cfg["max_minutes"] == 0:
             self.settings_feedback.setText("Settings saved. Auto-join will run until joined or stopped.")
         else:
@@ -574,6 +631,16 @@ class MainWindow(QMainWindow):
         self.load_settings_form(cfg)
         self.calibration_status.setText("Automatic scaling enabled — calibration usually is not needed.")
         self.settings_feedback.setText("Automatic scaling enabled and saved. Your physical input stays free.")
+
+    def preview_accent(self):
+        if hasattr(self, "accent_box"):
+            self.apply_accent(self.accent_box.currentData() or "violet")
+
+    def apply_accent(self, name):
+        set_accent(name)
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(build_style())
 
     def show_server_suggestions(self, query):
         self.server_completer.setCompletionPrefix(query)
@@ -597,6 +664,24 @@ class MainWindow(QMainWindow):
 
     def status_text(self, text):
         self.status.setText(text)
+        self.live_log.append(f"[{time.strftime('%H:%M:%S')}] {escape(text)}")
+        lowered = text.lower()
+        if "joined" in lowered or "success" in lowered:
+            current = "JOINED"
+        elif "retry" in lowered or "full" in lowered or "reject" in lowered:
+            current = "RETRY"
+        elif "connect" in lowered or "attempt" in lowered:
+            current = "CONNECT"
+        elif "launch" in lowered or "running" in lowered:
+            current = "LAUNCH"
+        else:
+            current = "SELECT"
+        order = ["SELECT", "LAUNCH", "CONNECT", "RETRY", "JOINED"]
+        for stage in order:
+            state = "active" if stage == current else ("done" if order.index(stage) < order.index(current) else "pending")
+            self.stage_labels[stage].setProperty("state", state)
+            self.stage_labels[stage].style().unpolish(self.stage_labels[stage])
+            self.stage_labels[stage].style().polish(self.stage_labels[stage])
 
     def check_for_updates(self):
         threading.Thread(target=self._check_for_updates, daemon=True).start()
@@ -607,17 +692,53 @@ class MainWindow(QMainWindow):
         except Exception:
             return
         if release:
-            self.bridge.update_available.emit(release["version"], release["url"])
+            self.bridge.update_available.emit(release)
 
-    def show_update_notice(self, version, url):
+    def show_update_notice(self, release):
+        version, url = release["version"], release["url"]
         self.update_notice.setText(
             f"<b>Update available:</b> v{escape(version)}  "
             f"<a href=\"{escape(url, quote=True)}\">Download it from GitHub</a>"
         )
         self.update_notice.show()
+        if self.auto_update_checkbox.isChecked():
+            self.begin_update(release)
+            return
+        answer = QMessageBox.question(
+            self,
+            "Update available",
+            f"SCP:SL Auto-Joiner v{version} is available. Download and install it now?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if answer == QMessageBox.Yes:
+            self.begin_update(release)
+
+    def begin_update(self, release):
+        self.update_notice.setText("Downloading and verifying the update…")
+        self.update_notice.setEnabled(False)
+        threading.Thread(target=self._install_update, args=(release,), daemon=True).start()
+
+    def _install_update(self, release):
+        try:
+            updater.install_update(release)
+        except Exception as exc:
+            self.bridge.update_finished.emit(str(exc), False)
+            return
+        self.bridge.update_finished.emit("Update verified. Restarting…", True)
+        self.bridge.restart_requested.emit()
+
+    def update_finished_notice(self, message, success):
+        self.update_notice.setEnabled(True)
+        if not success:
+            self.update_notice.setText(f"<b>Update failed:</b> {escape(message)}")
+        self.status.setText(message)
 
     def set_busy(self, busy):
         self.busy = busy; self.join_button.setEnabled(not busy); self.remember_button.setEnabled(not busy); self.progress.setVisible(busy); self.feed.setText("RUNNING" if busy else "IDLE")
+        if busy:
+            self.live_log.clear()
+            self.status_text("Starting auto-join…")
         self.delete_server_button.setEnabled(not busy and self.server_box.currentText() in self.servers)
         if not busy:
             self.stop_button.setEnabled(False)
@@ -697,7 +818,8 @@ class MainWindow(QMainWindow):
         self.calibration_dialog.show()
 
 
-STYLE = f"""
+def build_style():
+    return f"""
 QMainWindow, QDialog {{ background: {BG}; color: {TEXT}; }}
 QWidget {{ color: {TEXT}; font-family: 'Segoe UI'; font-size: 14px; }}
 QFrame#sidebar {{ background: #10161d; border-right: 1px solid {LINE}; }}
@@ -716,6 +838,10 @@ QLabel[role='brandSub'] {{ color: {MUTED}; font-size: 10px; letter-spacing: 1px;
 QLabel[role='number'] {{ font-size: 13px; }}
 QLabel[role='warning'] {{ color: {AMBER}; font-weight: 600; }}
 QLabel[role='updateNotice'] {{ background: #261d33; color: {TEXT}; border: 1px solid {CYAN}; border-radius: 6px; padding: 11px 14px; }}
+QLabel[role='stage'] {{ background: #100c16; color: {SUBTLE}; border: 1px solid {LINE}; border-radius: 5px; padding: 7px 4px; font-size: 10px; font-weight: 700; letter-spacing: 1px; }}
+QLabel[role='stage'][state='active'] {{ background: #38264f; color: {TEXT}; border-color: {CYAN}; }}
+QLabel[role='stage'][state='done'] {{ color: {CYAN}; border-color: #5d3b85; }}
+QTextEdit#liveLog {{ background: #100c16; color: {MUTED}; border: 1px solid {LINE}; border-radius: 6px; padding: 8px; font-family: 'Cascadia Mono'; font-size: 11px; }}
 QLabel[role='status'] {{ color: {TEXT}; font-size: 15px; }}
 QLabel[role='pill'] {{ color: {CYAN}; border: 1px solid #315a69; border-radius: 12px; padding: 4px 10px; font-size: 11px; font-weight: 700; }}
 QLabel[role='endpoint'] {{ background: #100c16; color: {MUTED}; border-left: 2px solid {CYAN}; border-radius: 2px; padding: 8px 10px; }}
@@ -752,7 +878,8 @@ QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
 def main():
     app = QApplication([])
     app.setStyle("Fusion")
-    app.setStyleSheet(STYLE)
+    set_accent(config_mod.load_config().get("accent", "violet"))
+    app.setStyleSheet(build_style())
     window = MainWindow(); window.show()
     app.exec()
 

@@ -1,5 +1,5 @@
 #define MyAppName "SCP:SL Auto-Joiner"
-#define MyAppVersion "0.2.0"
+#define MyAppVersion "0.2.1"
 #define MyAppPublisher "MasterNazz"
 #define MyAppExeName "SCP-SL-Auto-Joiner.exe"
 
@@ -12,13 +12,15 @@ DefaultDirName={localappdata}\Programs\SCP-SL-Auto-Joiner
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-ArchitecturesInstallIn64BitMode=x64
 OutputDir=dist
 OutputBaseFilename=SCP-SL-Auto-Joiner-v{#MyAppVersion}-win-x64-setup
 SetupIconFile=assets\app.ico
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+MinVersion=10.0.17763
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]
@@ -35,4 +37,11 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall
+
+[Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    SaveStringToFile(ExpandConstant('{app}\.installed'), 'per-user-install', False);
+end;
