@@ -10,6 +10,8 @@ DELAY_MARK = "Connection has been delayed by"
 DISCONNECT_MARK = "OnPeerDisconnected"
 CANCEL_MARK = "Connection Failed"
 CONNECTING_MARK = "Connecting to"
+RESPONSE_MARK = "Response sent. ID:"
+POLLING_STOP_MARK = "PollingLoop stopped"
 MENU_MARK = "Scene Manager: Loaded scene 'NewMainMenu'"
 CONNECTING_IP_RE = re.compile(r"Connection IP set to ([0-9.]+), port: (\d+)")
 
@@ -27,6 +29,10 @@ def classify_log_text(text):
         return "success"
     if DELAY_MARK in text and DISCONNECT_MARK in text:
         return "rejected"
+    if RESPONSE_MARK in text:
+        after_response = text.rsplit(RESPONSE_MARK, 1)[1]
+        if after_response.count(POLLING_STOP_MARK) >= 2:
+            return "rejected"
     if CANCEL_MARK in text:
         return "cancelled"
     if CONNECTING_MARK in text:

@@ -10,7 +10,7 @@ def test_load_config_creates_defaults_when_missing(tmp_path):
     path = str(tmp_path / "config.json")
     cfg = config_mod.load_config(path)
     assert os.path.exists(path)
-    assert cfg["retry_interval_s"] == 6
+    assert cfg["retry_interval_s"] == 2
     assert cfg["click_points"]["play"] == [0, 0]
 
 
@@ -22,6 +22,16 @@ def test_load_config_merges_saved_values(tmp_path):
     assert cfg["retry_interval_s"] == 9
     assert cfg["click_points"]["play"] == [12, 34]
     assert cfg["click_points"]["servers_tab"] == [0, 0]
+
+
+def test_load_config_migrates_old_retry_delay_to_two_seconds(tmp_path):
+    path = str(tmp_path / "config.json")
+    config_mod.save_config({"retry_interval_s": 6, "click_points": {}}, path)
+
+    cfg = config_mod.load_config(path)
+
+    assert cfg["config_version"] == 2
+    assert cfg["retry_interval_s"] == 2
 
 
 def test_calibrated_false_until_all_points_set(tmp_path):

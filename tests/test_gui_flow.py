@@ -82,7 +82,7 @@ def test_action_buttons_fit_at_minimum_window_size(monkeypatch):
 
     scroll = window.pages.currentWidget()
     viewport_right = scroll.viewport().mapToGlobal(QPoint(scroll.viewport().width(), 0)).x()
-    for button in (window.join_button, window.remember_button, window.stop_button):
+    for button in (window.saved_servers_button, window.join_button, window.remember_button, window.stop_button):
         button_right = button.mapToGlobal(QPoint(button.width(), 0)).x()
         assert button_right <= viewport_right
     window.close()
@@ -210,10 +210,11 @@ def test_settings_actions_fit_at_minimum_window_width(monkeypatch):
 
     scroll = window.pages.currentWidget()
     viewport_right = scroll.viewport().mapToGlobal(QPoint(scroll.viewport().width(), 0)).x()
-    for button in (window.save_settings_button, window.automatic_button, window.settings_calibration_button):
+    for button in (window.open_data_button, window.save_settings_button, window.automatic_button, window.settings_calibration_button):
         button_right = button.mapToGlobal(QPoint(button.width(), 0)).x()
         assert button_right <= viewport_right
     assert scroll.verticalScrollBar().maximum() > 0
+    assert scroll.horizontalScrollBar().maximum() == 0
     window.close()
 
 
@@ -237,4 +238,27 @@ def test_detected_server_name_prefills_confirmation(monkeypatch):
     assert seen["name"] == "Northwood Official Server - Canada #3"
     assert seen["ip"] == "158.69.52.5"
     assert seen["port"] == 7779
+    window.close()
+
+
+def test_saved_server_dropdown_browses_and_filters_without_rebuilding(monkeypatch):
+    qt_app = app()
+    servers = {
+        "Northwood Official Server - Canada #3": {"ip": "158.69.52.5", "port": 7779},
+        "King's Playground - US East #1": {"ip": "1.2.3.4", "port": 7777},
+    }
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: servers)
+    window = gui.MainWindow()
+    original_model = window.server_box.model()
+
+    window.saved_servers_button.click()
+    qt_app.processEvents()
+    assert window.server_box.view().isVisible()
+    assert window.server_box.count() == 2
+
+    window.show_server_suggestions("canada")
+    qt_app.processEvents()
+    assert window.server_box.model() is original_model
+    assert window.server_completer.completionModel().rowCount() == 1
+    window.server_box.hidePopup()
     window.close()

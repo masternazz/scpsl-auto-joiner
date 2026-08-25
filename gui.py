@@ -10,7 +10,7 @@ winput.set_dpi_awareness()
 from PySide6.QtCore import QObject, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPalette
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QDialogButtonBox, QFrame, QGridLayout,
+    QApplication, QComboBox, QCompleter, QDialog, QDialogButtonBox, QFrame, QGridLayout,
     QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
     QProgressBar, QScrollArea, QSizePolicy, QSpacerItem, QStackedWidget,
     QSpinBox, QTextEdit, QVBoxLayout, QWidget,
@@ -20,7 +20,7 @@ import config as config_mod
 import joiner
 import logwatch
 import resolver
-from app_paths import resource_path
+from app_paths import app_dir, resource_path
 
 BG = "#0b0f14"
 SURFACE = "#121820"
@@ -319,9 +319,17 @@ class MainWindow(QMainWindow):
         box.addSpacing(8)
         box.addWidget(label("SERVER NAME", "fieldLabel"))
         self.server_box = QComboBox(); self.server_box.setEditable(True); self.server_box.setInsertPolicy(QComboBox.NoInsert); self.server_box.setPlaceholderText("Start typing a saved server…")
-        self.server_box.lineEdit().textEdited.connect(self.filter_servers)
+        self.server_completer = QCompleter(self.server_box.model(), self.server_box)
+        self.server_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.server_completer.setFilterMode(Qt.MatchContains)
+        self.server_completer.setCompletionMode(QCompleter.PopupCompletion)
+        self.server_box.setCompleter(self.server_completer)
+        self.server_box.lineEdit().textEdited.connect(self.show_server_suggestions)
         self.server_box.currentTextChanged.connect(self.update_endpoint_preview)
+        self.saved_servers_button = QPushButton("Saved servers  ▾")
+        self.saved_servers_button.clicked.connect(self.server_box.showPopup)
         box.addWidget(self.server_box)
+        box.addWidget(self.saved_servers_button)
         self.endpoint_preview = label("No saved server selected.", "helper")
         box.addWidget(self.endpoint_preview)
         self.join_button = QPushButton("Start auto-join"); self.join_button.setProperty("kind", "primary")
@@ -418,6 +426,16 @@ class MainWindow(QMainWindow):
         points_box.addLayout(point_grid)
         layout.addWidget(points)
 
+        storage, storage_box = self.card()
+        storage_box.addWidget(label("APP DATA", "eyebrow"))
+        storage_box.addWidget(label("One local storage folder", "section"))
+        storage_box.addWidget(label("Saved server names, IP addresses, ports, settings, calibration, and the error log stay together here:", "body"))
+        storage_box.addWidget(label(app_dir(), "helper"))
+        self.open_data_button = QPushButton("Open AppData folder")
+        self.open_data_button.clicked.connect(self.open_data_folder)
+        storage_box.addWidget(self.open_data_button)
+        layout.addWidget(storage)
+
         actions, actions_box = self.card()
         actions_box.addWidget(label("APPLY", "eyebrow"))
         self.save_settings_button = QPushButton("Save settings"); self.save_settings_button.setProperty("kind", "primary")
@@ -504,9 +522,17 @@ class MainWindow(QMainWindow):
         self.calibration_status.setText("Automatic window-relative controls enabled.")
         self.settings_feedback.setText("Automatic controls enabled and saved.")
 
-    def filter_servers(self, query):
-        current = self.server_box.currentText()
-        self.server_box.clear(); self.server_box.addItems(sorted(name for name in self.servers if query.lower() in name.lower()) or sorted(self.servers)); self.server_box.setEditText(current)
+    def show_server_suggestions(self, query):
+        self.server_completer.setCompletionPrefix(query)
+        if query and self.server_completer.completionCount():
+            self.server_completer.complete()
+
+    def open_data_folder(self):
+        try:
+            os.startfile(app_dir())
+            self.settings_feedback.setText("Opened the AppData storage folder.")
+        except OSError:
+            self.settings_feedback.setText("Could not open the AppData storage folder.")
 
     def update_endpoint_preview(self, name):
         entry = self.servers.get(name)

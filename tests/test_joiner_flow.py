@@ -142,3 +142,31 @@ def test_stop_during_retry_delay_prevents_another_click(monkeypatch):
 
     assert joiner.run("Canada #2", stop_event=stop) == "stopped"
     assert events.count(("click", 630, 580)) == 1
+
+
+def test_rejected_server_reports_reason_and_two_second_retry(monkeypatch):
+    statuses = []
+    sleeps = []
+    cfg = {
+        "navigation_mode": "automatic",
+        "click_points": {},
+        "attempt_timeout_s": 20,
+        "retry_interval_s": 2,
+        "max_unclear": 3,
+        "max_attempts": 5,
+        "max_minutes": 5,
+    }
+    monkeypatch.setattr(joiner.config_mod, "load_config", lambda: cfg)
+    monkeypatch.setattr(joiner.resolver, "resolve", lambda _name: ("Canada #3", "1.2.3.4", 7779))
+    monkeypatch.setattr(joiner.logwatch, "LogWatcher", FakeWatcher)
+    monkeypatch.setattr(joiner.winput, "find_game_window", lambda _title: 123)
+    monkeypatch.setattr(joiner.winput, "get_window_rect", lambda _hwnd: (0, 0, 1000, 1000))
+    monkeypatch.setattr(joiner.winput, "focus_window", lambda _hwnd: True)
+    monkeypatch.setattr(joiner.winput, "mouse_click", lambda *_args: None)
+    monkeypatch.setattr(joiner.winput, "replace_text", lambda *_args: None)
+    monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
+    monkeypatch.setattr(joiner.time, "sleep", lambda seconds: sleeps.append(seconds))
+
+    assert joiner.run("Canada #3", on_status=statuses.append) == "success"
+    assert 2 in sleeps
+    assert "Server full or connection rejected. Retrying in 2 seconds..." in statuses

@@ -219,3 +219,29 @@ def test_logwatcher_wait_for_regex_timeout(tmp_path):
     watcher.close()
 
     assert result is None
+
+
+def test_polling_shutdown_after_response_is_rejected():
+    text = """
+Connecting to 158.69.52.5!
+Response sent. ID: 2100969708, Response length: 10
+Successfully registered 36 spawnable prefabs for 64 items.
+PollingLoop started
+PollingLoop stopped
+[T58] PollingLoop started
+[T58] PollingLoop stopped
+"""
+
+    assert classify_log_text(text) == "rejected"
+
+
+def test_response_without_polling_shutdown_is_still_connecting():
+    text = """
+Connecting to 158.69.52.5!
+Response sent. ID: 123, Response length: 10
+Successfully registered 36 spawnable prefabs for 64 items.
+PollingLoop started
+[T36] PollingLoop started
+"""
+
+    assert classify_log_text(text) == "connecting"

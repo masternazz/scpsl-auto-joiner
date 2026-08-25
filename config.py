@@ -7,14 +7,16 @@ import os
 from app_paths import app_dir
 
 CONFIG_PATH = os.path.join(app_dir(), "config.json")
+CONFIG_VERSION = 2
 
 DEFAULTS = {
+    "config_version": CONFIG_VERSION,
     "navigation_mode": "automatic",
     # Qt 6 reports cursor positions in DPI-scaled logical pixels. Version 2
     # calibration records native Win32 physical pixels so the coordinates
     # match GetWindowRect/SendInput on 4K displays.
     "calibration_space": None,
-    "retry_interval_s": 6,
+    "retry_interval_s": 2,
     "attempt_timeout_s": 20,
     "max_unclear": 3,
     "max_attempts": 100,
@@ -47,6 +49,13 @@ def load_config(path=None):
     # Merge saved click_points into the deepcopied defaults
     if "click_points" in data:
         merged["click_points"].update(data["click_points"])
+    if int(data.get("config_version", 1)) < CONFIG_VERSION:
+        # Version 1 shipped with a six-second default. Preserve custom values,
+        # but migrate that old default for existing users.
+        if data.get("retry_interval_s", 6) == 6:
+            merged["retry_interval_s"] = 2
+        merged["config_version"] = CONFIG_VERSION
+        save_config(merged, path)
     return merged
 
 
