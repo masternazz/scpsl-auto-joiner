@@ -56,3 +56,63 @@ def test_forget_server_removes_only_selected_name(tmp_path):
         "Canada 3": {"ip": "5.6.7.8", "port": 7778},
     }
     assert resolver_mod.forget_server("Missing", path) is False
+
+
+def test_query_server_parses_a2s_info_metadata(tmp_path, monkeypatch):
+    del tmp_path
+    packet = (
+        b"\xff\xff\xff\xffI\x11Name\x00Map\x00Folder\x00Game\x00"
+        + b"\x01\x00\x05\x32\x10\x64\x00\x01\x01\x01.2.3.4\x00"
+    )
+    class FakeSocket:
+        def settimeout(self, value):
+            self.timeout = value
+        def sendto(self, data, address):
+            self.address = address
+        def recvfrom(self, size):
+            return packet, ("1.2.3.4", 7777)
+        def close(self):
+            pass
+    monkeypatch.setattr(resolver_mod.socket, "socket", lambda *args: FakeSocket())
+    result = resolver_mod.query_server("1.2.3.4", 7777)
+    assert result["name"] == "Name"
+    assert result["map"] == "Map"
+    assert result["players"] == 5
+    assert result["max_players"] == 50
+    assert result["available"] is True
+    assert "latency_ms" in result
+
+
+def test_query_server_handles_split_challenge(tmp_path, monkeypatch):
+    del tmp_path
+    challenge = b"\xff\xff\xff\xffA\x01\x02\x03\x04"
+    info = b"\xff\xff\xff\xffI\x11Name\x00Map\x00Folder\x00Game\x00\x01\x00\x01\x10\x00\x10\x20\x01\x00"
+    class FakeSocket:
+        def __init__(self):
+            self.sent = []
+        def settimeout(self, value):
+            pass
+        def sendto(self, data, address):
+            self.sent.append(data)
+        def recvfrom(self, size):
+            return (challenge if len(self.sent) == 1 else info), ("1.2.3.4", 7777)
+        def close(self):
+            pass
+    sock = FakeSocket()
+    monkeypatch.setattr(resolver_mod.socket, "socket", lambda *args: sock)
+    assert resolver_mod.query_server("1.2.3.4", 7777)["name"] == "Name"
+    assert sock.sent[1].endswith(b"\x01\x02\x03\x04")
+
+
+def test_query_server_returns_none_on_timeout(monkeypatch):
+    class FakeSocket:
+        def settimeout(self, value):
+            pass
+        def sendto(self, data, address):
+            pass
+        def recvfrom(self, size):
+            raise TimeoutError()
+        def close(self):
+            pass
+    monkeypatch.setattr(resolver_mod.socket, "socket", lambda *args: FakeSocket())
+    assert resolver_mod.query_server("1.2.3.4", 7777) is None

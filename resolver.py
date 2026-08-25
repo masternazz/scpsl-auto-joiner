@@ -3,12 +3,13 @@
 the design spec). servers.json is populated by the "remember a server" flow
 in gui.py, not hand-edited."""
 import difflib
-import json
 import os
 import re
 import socket
+import time
 
 from app_paths import app_dir
+import server_store
 
 A2S_INFO_QUERY = b"\xff\xff\xff\xffTSource Engine Query\x00"
 RICH_TEXT_TAG_RE = re.compile(r"<[^>]{1,100}>")
@@ -20,31 +21,26 @@ def load_servers(path=None):
     path = path or SERVERS_PATH
     if not os.path.exists(path):
         return {}
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+    data = server_store.load_store(path)
+    return {server["name"]: {"ip": server["ip"], "port": server["port"]} for server in data["servers"]}
 
 
 def save_servers(servers, path=None):
     path = path or SERVERS_PATH
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(servers, f, indent=2)
+    server_store.save_store(servers, path)
 
 
 def remember_server(name, ip, port, path=None):
-    path = path or SERVERS_PATH
-    servers = load_servers(path)
-    servers[name] = {"ip": ip, "port": int(port)}
-    save_servers(servers, path)
+    server_store.upsert_server(name, ip, port, path or SERVERS_PATH)
 
 
 def forget_server(name, path=None):
     path = path or SERVERS_PATH
-    servers = load_servers(path)
-    if name not in servers:
+    store = server_store.load_store(path)
+    server = next((item for item in store["servers"] if item["name"] == name), None)
+    if server is None:
         return False
-    del servers[name]
-    save_servers(servers, path)
-    return True
+    return server_store.delete_server(server["id"], path)
 
 
 def _parse_a2s_info(packet):
@@ -72,6 +68,60 @@ def query_server_name(ip, port, timeout=1.5):
         return None
     finally:
         sock.close()
+
+
+def _parse_a2s_info_details(packet):
+    if len(packet) < 6 or packet[:5] != b"\xff\xff\xff\xffI":
+        return None
+    offset = 6
+    fields = []
+    for _ in range(4):
+        end = packet.find(b"\x00", offset)
+        if end < 0:
+            return None
+        fields.append(packet[offset:end].decode("utf-8", errors="replace"))
+        offset = end + 1
+    if len(packet) < offset + 9:
+        return None
+    server_id = int.from_bytes(packet[offset:offset + 2], "little")
+    players, max_players, bots = packet[offset + 2:offset + 5]
+    server_type, environment, visibility, vac = packet[offset + 5:offset + 9]
+    offset += 9
+    result = {"name": " ".join(RICH_TEXT_TAG_RE.sub("", fields[0]).split()), "map": fields[1],
+              "folder": fields[2], "game": fields[3], "id": server_id, "players": players,
+              "max_players": max_players, "bots": bots, "server_type": chr(server_type),
+              "environment": chr(environment), "password": bool(visibility), "vac": bool(vac)}
+    if len(packet) > offset:
+        edf = packet[offset]
+        offset += 1
+        result["edf"] = edf
+        if edf & 0x80 and len(packet) >= offset + 2:
+            result["port"] = int.from_bytes(packet[offset:offset + 2], "little")
+    return result
+
+
+def query_server(ip, port, timeout=1.5):
+    try:
+        address = (str(ip), int(port))
+        started = time.perf_counter()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(timeout)
+        sock.sendto(A2S_INFO_QUERY, address)
+        packet, _ = sock.recvfrom(4096)
+        if packet[:5] == b"\xff\xff\xff\xffA" and len(packet) >= 9:
+            sock.sendto(A2S_INFO_QUERY + packet[5:9], address)
+            packet, _ = sock.recvfrom(4096)
+        result = _parse_a2s_info_details(packet)
+        if result is None:
+            return None
+        result["latency_ms"] = round((time.perf_counter() - started) * 1000, 2)
+        result["available"] = True
+        return result
+    except (OSError, ValueError):
+        return None
+    finally:
+        if "sock" in locals():
+            sock.close()
 
 
 def resolve(query, path=None):
