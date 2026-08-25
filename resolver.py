@@ -100,9 +100,12 @@ def _parse_a2s_info_details(packet):
     return result
 
 
-def query_server(ip, port, timeout=1.5):
+def query_server(ip, port, timeout=1.5, path=None):
     try:
         address = (str(ip), int(port))
+        saved = server_store.load_store(path or SERVERS_PATH)["servers"]
+        if not any(server["ip"] == address[0] and server["port"] == address[1] for server in saved):
+            return None
         started = time.perf_counter()
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(timeout)

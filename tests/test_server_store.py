@@ -73,3 +73,17 @@ def test_search_servers_matches_name_and_endpoint(tmp_path):
     server_store.upsert_server("Bravo", "bravo.example", 8888, path)
     assert [item["name"] for item in server_store.search_servers("bravo", path)] == ["Bravo"]
     assert [item["name"] for item in server_store.search_servers("10.0.0.1", path)] == ["Alpha"]
+
+
+def test_load_rejects_invalid_version_one_server_record(tmp_path):
+    path = str(tmp_path / "servers.json")
+    with open(path, "w", encoding="utf-8") as stream:
+        json.dump({"version": 1, "servers": [{"id": "x", "name": "Bad", "ip": "bad host", "port": 7777}], "groups": []}, stream)
+    with pytest.raises(ValueError, match="endpoint"):
+        server_store.load_store(path)
+
+
+def test_save_rejects_invalid_version_one_server_record(tmp_path):
+    path = str(tmp_path / "servers.json")
+    with pytest.raises(ValueError, match="port"):
+        server_store.save_store({"version": 1, "servers": [{"id": "x", "name": "Bad", "ip": "1.2.3.4", "port": 0}], "groups": []}, path)

@@ -59,7 +59,8 @@ def test_forget_server_removes_only_selected_name(tmp_path):
 
 
 def test_query_server_parses_a2s_info_metadata(tmp_path, monkeypatch):
-    del tmp_path
+    path = str(tmp_path / "servers.json")
+    resolver_mod.remember_server("Saved", "1.2.3.4", 7777, path)
     packet = (
         b"\xff\xff\xff\xffI\x11Name\x00Map\x00Folder\x00Game\x00"
         + b"\x01\x00\x05\x32\x10\x64\x00\x01\x01\x01.2.3.4\x00"
@@ -74,7 +75,7 @@ def test_query_server_parses_a2s_info_metadata(tmp_path, monkeypatch):
         def close(self):
             pass
     monkeypatch.setattr(resolver_mod.socket, "socket", lambda *args: FakeSocket())
-    result = resolver_mod.query_server("1.2.3.4", 7777)
+    result = resolver_mod.query_server("1.2.3.4", 7777, path=path)
     assert result["name"] == "Name"
     assert result["map"] == "Map"
     assert result["players"] == 5
@@ -84,7 +85,8 @@ def test_query_server_parses_a2s_info_metadata(tmp_path, monkeypatch):
 
 
 def test_query_server_handles_split_challenge(tmp_path, monkeypatch):
-    del tmp_path
+    path = str(tmp_path / "servers.json")
+    resolver_mod.remember_server("Saved", "1.2.3.4", 7777, path)
     challenge = b"\xff\xff\xff\xffA\x01\x02\x03\x04"
     info = b"\xff\xff\xff\xffI\x11Name\x00Map\x00Folder\x00Game\x00\x01\x00\x01\x10\x00\x10\x20\x01\x00"
     class FakeSocket:
@@ -100,11 +102,15 @@ def test_query_server_handles_split_challenge(tmp_path, monkeypatch):
             pass
     sock = FakeSocket()
     monkeypatch.setattr(resolver_mod.socket, "socket", lambda *args: sock)
-    assert resolver_mod.query_server("1.2.3.4", 7777)["name"] == "Name"
+    assert resolver_mod.query_server("1.2.3.4", 7777, path=path)["name"] == "Name"
     assert sock.sent[1].endswith(b"\x01\x02\x03\x04")
 
 
 def test_query_server_returns_none_on_timeout(monkeypatch):
+    # The endpoint must be saved before the public query path will contact it.
+    import tempfile
+    path = tempfile.mkdtemp() + "/servers.json"
+    resolver_mod.remember_server("Saved", "1.2.3.4", 7777, path)
     class FakeSocket:
         def settimeout(self, value):
             pass
@@ -115,4 +121,12 @@ def test_query_server_returns_none_on_timeout(monkeypatch):
         def close(self):
             pass
     monkeypatch.setattr(resolver_mod.socket, "socket", lambda *args: FakeSocket())
-    assert resolver_mod.query_server("1.2.3.4", 7777) is None
+    assert resolver_mod.query_server("1.2.3.4", 7777, path=path) is None
+
+
+def test_query_server_does_not_contact_unsaved_endpoint(tmp_path, monkeypatch):
+    path = str(tmp_path / "servers.json")
+    contacted = []
+    monkeypatch.setattr(resolver_mod.socket, "socket", lambda *args: contacted.append(True))
+    assert resolver_mod.query_server("9.9.9.9", 9999, path=path) is None
+    assert contacted == []

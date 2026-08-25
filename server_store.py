@@ -43,11 +43,14 @@ def _validate_endpoint(ip, port):
 
 def _migrate(data):
     if isinstance(data, dict) and data.get("version") == STORE_VERSION:
-        return {
+        store = {
             "version": STORE_VERSION,
             "servers": list(data.get("servers", [])),
             "groups": list(data.get("groups", [])),
         }
+        for index, server in enumerate(store["servers"]):
+            store["servers"][index] = _validate_server_record(server)
+        return store
     if not isinstance(data, dict):
         raise ValueError("store must be an object")
     servers = []
@@ -56,6 +59,19 @@ def _migrate(data):
         server_id = str(uuid.uuid5(_MIGRATION_NAMESPACE, "%s\0%s\0%s" % (name, ip, port)))
         servers.append({"id": server_id, "name": str(name), "ip": ip, "port": port})
     return {"version": STORE_VERSION, "servers": servers, "groups": []}
+
+
+def _validate_server_record(server):
+    if not isinstance(server, dict):
+        raise ValueError("invalid server record")
+    if not isinstance(server.get("id"), str) or not server["id"].strip():
+        raise ValueError("invalid server ID")
+    if not isinstance(server.get("name"), str) or not server["name"].strip():
+        raise ValueError("invalid server name")
+    ip, port = _validate_endpoint(server.get("ip"), server.get("port"))
+    normalized = dict(server)
+    normalized.update({"id": server["id"].strip(), "name": server["name"].strip(), "ip": ip, "port": port})
+    return normalized
 
 
 def load_store(path=None):
