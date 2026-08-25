@@ -88,7 +88,7 @@ def test_action_buttons_fit_at_minimum_window_size(monkeypatch):
     window.close()
 
 
-def test_calibration_explains_and_captures_four_points(monkeypatch):
+def test_guided_calibration_hides_once_and_advances_with_hotkey(monkeypatch):
     qt_app = app()
     cfg = {
         "navigation_mode": "automatic",
@@ -109,7 +109,6 @@ def test_calibration_explains_and_captures_four_points(monkeypatch):
     monkeypatch.setattr(gui.config_mod, "load_config", lambda: cfg)
     monkeypatch.setattr(gui.config_mod, "save_config", lambda value: saved.append(value.copy()))
     monkeypatch.setattr(gui, "QCursor", FakeCursor)
-    monkeypatch.setattr(gui.QTimer, "singleShot", lambda _delay, callback: callback())
     window = gui.MainWindow()
     visibility_events = []
     original_hide, original_show = window.hide, window.show
@@ -118,19 +117,21 @@ def test_calibration_explains_and_captures_four_points(monkeypatch):
     dialog = gui.CalibrationDialog(window)
     visibility_events.clear()
 
-    assert dialog.capture_button.text() == "Start 3-second capture"
+    assert dialog.capture_button.text() == "Begin guided calibration"
     instructions = dialog.instructions.text().lower()
-    assert "click start" in instructions
-    assert "then move" in instructions
+    assert "press f8" in instructions
+
+    dialog.capture_button.click()
+    qt_app.processEvents()
+    assert visibility_events == ["hide"]
+    assert "Step 1 of 4" in dialog.overlay.message.text()
 
     for expected_step in range(1, 5):
-        dialog.capture_button.click()
+        dialog.capture_current_point()
         qt_app.processEvents()
         if expected_step < 4:
-            assert f"Captured step {expected_step}" in dialog.countdown.text()
-            assert dialog.isVisible()
-            assert dialog.capture_button.isEnabled()
-            assert f"Step {expected_step + 1} of 4" in dialog.step_label.text()
+            assert f"Step {expected_step + 1} of 4" in dialog.overlay.message.text()
+            assert not window.isVisible()
 
     assert dialog.result() == QDialog.Accepted
     assert cfg["navigation_mode"] == "manual"
@@ -138,6 +139,21 @@ def test_calibration_explains_and_captures_four_points(monkeypatch):
     assert cfg["click_points"]["direct_connect"] == [490, 180]
     assert cfg["click_points"]["ip_field"] == [590, 510]
     assert cfg["click_points"]["connect_button"] == [630, 580]
-    assert visibility_events == ["hide", "show"] * 4
+    assert visibility_events == ["hide", "show"]
     assert saved
+    window.close()
+
+
+def test_main_window_opens_calibration_modelessly(monkeypatch):
+    qt_app = app()
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: {})
+    window = gui.MainWindow()
+    window.show()
+
+    window.calibrate()
+    qt_app.processEvents()
+
+    assert window.calibration_dialog.isVisible()
+    assert window.isVisible()
+    window.calibration_dialog.reject()
     window.close()

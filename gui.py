@@ -47,94 +47,136 @@ def label(text, style="body"):
     return widget
 
 
+class CalibrationOverlay(QWidget):
+    def __init__(self):
+        flags = Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus | Qt.WindowTransparentForInput
+        super().__init__(None, flags)
+        self.setObjectName("calibrationOverlay")
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self.setMinimumWidth(560)
+        self.setStyleSheet(f"QWidget#calibrationOverlay {{ background: {BG}; border: 1px solid {CYAN}; border-radius: 8px; }}")
+        box = QVBoxLayout(self)
+        box.setContentsMargins(20, 14, 20, 14)
+        self.message = label("", "section")
+        box.addWidget(self.message)
+
+    def show_on(self, screen):
+        self.adjustSize()
+        area = screen.availableGeometry()
+        self.move(area.right() - self.width() - 24, area.top() + 24)
+        self.show()
+        self.raise_()
+
+
 class CalibrationDialog(QDialog):
     steps = [("servers_tab", "Servers tab"), ("direct_connect", "Direct Connect button"), ("ip_field", "IP/Hostname field"), ("connect_button", "Connect button")]
 
     def __init__(self, app):
         super().__init__(app)
         self.app, self.index = app, 0
+        self.active = False
+        self.overlay = None
         self.cfg = config_mod.load_config()
         self.setWindowTitle("Calibrate controls")
         self.setMinimumSize(560, 360)
         self.resize(620, 430)
-        self.setModal(True)
-        self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 28, 30, 28)
         layout.setSpacing(14)
         layout.addWidget(label("Calibrate controls", "title"))
-        layout.addWidget(label("Optional manual fallback for this computer. Click Start first; the app hides for 3 seconds while you move your pointer onto the named SCP:SL control."))
+        layout.addWidget(label("Start once, hover each named SCP:SL control, and press F8. The guide advances automatically through all four controls."))
         self.progress = QProgressBar()
         self.progress.setRange(0, len(self.steps))
         self.progress.setTextVisible(False)
         layout.addWidget(self.progress)
         self.step_label = label("", "section")
         layout.addWidget(self.step_label)
-        self.instructions = label("", "body")
+        self.instructions = label("Hover the control named in the guide and press F8. You do not click the game or return here between steps.", "body")
         layout.addWidget(self.instructions)
-        self.countdown = label("", "warning")
-        layout.addWidget(self.countdown)
+        layout.addWidget(label("F8 captures the mouse position. F9 cancels and returns to the app.", "warning"))
         layout.addStretch()
         row = QHBoxLayout()
-        self.capture_button = QPushButton("Start 3-second capture")
+        self.capture_button = QPushButton("Begin guided calibration")
         self.capture_button.setProperty("kind", "primary")
-        self.capture_button.clicked.connect(self.capture)
+        self.capture_button.clicked.connect(self.begin_calibration)
         row.addWidget(self.capture_button)
         cancel = QPushButton("Cancel")
-        cancel.clicked.connect(self.reject)
+        cancel.clicked.connect(self.cancel_calibration)
         row.addWidget(cancel)
         layout.addLayout(row)
+        self.hotkey_timer = QTimer(self)
+        self.hotkey_timer.setInterval(40)
+        self.hotkey_timer.timeout.connect(self.poll_hotkeys)
+        self.f8_down = self.f9_down = False
         self.show_step()
 
     def show_step(self):
-        if self.index >= len(self.steps):
-            self.cfg["navigation_mode"] = "manual"
-            config_mod.save_config(self.cfg)
-            self.app.refresh()
-            self.app.bridge.status.emit("Manual calibration saved and active.")
-            self.accept()
-            return
         _, title = self.steps[self.index]
-        total = len(self.steps)
-        self.step_label.setText(f"Step {self.index + 1} of {total}  ·  {title}")
-        self.instructions.setText(
-            f"Click Start first. The app will hide for 3 seconds; then move your mouse "
-            f"onto SCP:SL's {title} and hold it still. Do not click inside the game."
-        )
+        self.step_label.setText(f"Step {self.index + 1} of {len(self.steps)}  ·  {title}")
         self.progress.setValue(self.index)
 
-    def capture(self):
-        if self.index >= len(self.steps) or not self.capture_button.isEnabled():
+    def begin_calibration(self):
+        if self.active:
             return
-        self.capture_button.setEnabled(False)
-        self.capture_button.setText("Countdown running...")
-        self.instructions.setText("After this window hides, move onto the named game control and hold still until it returns.")
-        self._countdown(3)
+        self.active = True
+        self.overlay = CalibrationOverlay()
+        self.app.hide()
+        self.hide()
+        self.update_overlay()
+        self.overlay.show_on(self.app.screen() or QApplication.primaryScreen())
+        self.hotkey_timer.start()
 
-    def _countdown(self, seconds):
-        if seconds:
-            self.countdown.setText(f"Capturing in {seconds}…")
-            if seconds == 3:
-                self.app.hide()
-                self.hide()
-            QTimer.singleShot(1000, lambda: self._countdown(seconds - 1))
+    def update_overlay(self):
+        _, title = self.steps[self.index]
+        self.overlay.message.setText(
+            f"CALIBRATION  ·  Step {self.index + 1} of {len(self.steps)}\n"
+            f"Hover: {title}    •    Press F8 to capture    •    F9 to cancel"
+        )
+
+    def poll_hotkeys(self):
+        f8 = winput.key_is_down(winput.VK_F8)
+        f9 = winput.key_is_down(winput.VK_F9)
+        if f8 and not self.f8_down:
+            self.capture_current_point()
+        elif f9 and not self.f9_down:
+            self.cancel_calibration()
+        self.f8_down, self.f9_down = f8, f9
+
+    def capture_current_point(self):
+        if not self.active or self.index >= len(self.steps):
+            return
+        point = QCursor.pos()
+        name, _ = self.steps[self.index]
+        self.cfg["click_points"][name] = [point.x(), point.y()]
+        self.index += 1
+        self.progress.setValue(self.index)
+        if self.index < len(self.steps):
+            self.update_overlay()
         else:
-            point = QCursor.pos()
-            name, title = self.steps[self.index]
-            captured_step = self.index + 1
-            self.cfg["click_points"][name] = [point.x(), point.y()]
+            self.finish_calibration()
+
+    def finish_calibration(self):
+        self.hotkey_timer.stop()
+        self.overlay.close()
+        self.active = False
+        self.cfg["navigation_mode"] = "manual"
+        config_mod.save_config(self.cfg)
+        self.app.refresh()
+        self.app.bridge.status.emit("Manual calibration saved and active.")
+        self.app.show()
+        self.app.raise_()
+        self.app.activateWindow()
+        self.accept()
+
+    def cancel_calibration(self):
+        if self.active:
+            self.hotkey_timer.stop()
+            self.overlay.close()
+            self.active = False
             self.app.show()
-            self.showNormal()
-            self.setWindowState(self.windowState() & ~Qt.WindowMinimized)
-            self.raise_()
-            self.activateWindow()
-            self.setFocus()
-            self.capture_button.setText("Start 3-second capture")
-            self.capture_button.setEnabled(True)
-            self.index += 1
-            self.show_step()
-            if self.index < len(self.steps):
-                self.countdown.setText(f"Captured step {captured_step}: {title} at ({point.x()}, {point.y()}).")
+            self.app.raise_()
+            self.app.activateWindow()
+        self.reject()
 
 
 class HelpDialog(QDialog):
@@ -152,7 +194,7 @@ class HelpDialog(QDialog):
             "1. Automatic mode\n\n"
             "By default, the app scales clicks to SCP:SL's current window. Different resolutions and borderless fullscreen layouts normally need no calibration.\n\n"
             "2. Optional calibration\n\n"
-            "If automatic navigation misses a control, use Calibrate controls. Click Start capture first; while the app is hidden, move onto the requested game control and hold still. You never click inside SCP:SL. The fallback is saved only on this computer.\n\n"
+            "If automatic navigation misses a control, use Calibrate controls. Start once, hover each requested game control, and press F8. The on-screen guide advances through all four steps automatically. F9 cancels.\n\n"
             "3. Remember a server\n\n"
             "Join normally and click Remember a server. The app reads the IP and port from Player.log and saves the endpoint.\n\n"
             "4. Start auto-join\n\n"
@@ -298,7 +340,7 @@ class MainWindow(QMainWindow):
         card, box = self.card()
         box.addWidget(label("CONTROL SETUP", "eyebrow"))
         box.addWidget(label("Calibrate this computer", "section"))
-        box.addWidget(label("For each control, click Start capture first. The app hides for 3 seconds so you can move your pointer onto Servers, Direct Connect, the IP/Hostname field, or Connect. You never click the game during capture.", "body"))
+        box.addWidget(label("Start one guided session, hover Servers, Direct Connect, the IP/Hostname field, and Connect in order, and press F8 for each. The guide advances automatically; F9 cancels.", "body"))
         row = QHBoxLayout(); self.calibration_status = label("Automatic window-relative controls enabled.", "warning"); row.addWidget(self.calibration_status); row.addStretch(); box.addLayout(row)
         button = QPushButton("Open calibration")
         button.setProperty("kind", "primary"); button.clicked.connect(self.calibrate); box.addWidget(button)
@@ -311,7 +353,7 @@ class MainWindow(QMainWindow):
         self.heading(layout, "FIELD MANUAL  /  REFERENCE", "How it works", "A plain-language guide to every button and what the automation is doing.")
         for number, title, text in [
             ("01", "Automatic first", "Clicks scale to the current SCP:SL window, so different resolutions and borderless fullscreen layouts normally need no setup."),
-            ("02", "Optional calibration", "Click Start capture first. While the app is hidden for 3 seconds, move your pointer onto the requested control and hold still. Repeat for four controls; the manual fallback is saved locally."),
+            ("02", "Optional calibration", "Start once, hover each requested control, and press F8. A click-through guide advances through all four controls automatically; F9 cancels."),
             ("03", "Remember a server", "Start the watcher and join normally. After Player.log reveals the IP and port, a popup asks you for a friendly name."),
             ("04", "What it does not do", "No memory reading, packet manipulation, OCR, or anti-cheat bypass. It sends normal Windows input and reads Player.log."),
         ]:
@@ -405,7 +447,8 @@ class MainWindow(QMainWindow):
         self.bridge.busy.emit(False)
 
     def calibrate(self):
-        CalibrationDialog(self).exec()
+        self.calibration_dialog = CalibrationDialog(self)
+        self.calibration_dialog.show()
 
 
 STYLE = f"""

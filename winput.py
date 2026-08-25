@@ -13,6 +13,8 @@ VK_RETURN = 0x0D
 VK_BACK = 0x08
 VK_CONTROL = 0x11
 VK_A = 0x41
+VK_F8 = 0x77
+VK_F9 = 0x78
 
 _WM_KEYDOWN = 0x0100
 _WM_KEYUP = 0x0101
@@ -33,6 +35,11 @@ def get_cursor_pos():
     if ctypes.windll.user32.GetCursorPos(ctypes.byref(point)):
         return point.x, point.y
     return None
+
+
+def key_is_down(vk):
+    """Return whether a global Windows virtual key is currently held."""
+    return bool(ctypes.windll.user32.GetAsyncKeyState(vk) & 0x8000)
 
 
 def set_dpi_awareness():
