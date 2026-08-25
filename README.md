@@ -4,6 +4,8 @@ Windows helper for retrying SCP: Secret Laboratory server joins.
 
 ![SCP:SL Auto-Joiner](assets/generated/github-banner-purple.png)
 
+![Auto-join flow](assets/generated/auto-join-flow.gif)
+
 ## Download
 
 Get the latest Windows build from [Releases](https://github.com/masternazz/scpsl-auto-joiner/releases). Extract the ZIP and run `SCP-SL-Auto-Joiner.exe`.
