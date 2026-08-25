@@ -1,5 +1,11 @@
 # SCP:SL Auto-Joiner — Design
 
+> **Approved product direction (2026-08-25):** reliability-first auto-join,
+> a saved-server browser, ordered server groups, and a four-page UI. Public
+> server role detection and schedules are intentionally out of scope for this
+> release. Role detection may be added later through an optional LabAPI
+> companion for servers the user controls.
+
 ## Problem
 
 Popular official SCP:SL servers are frequently full. Manually mashing "connect"
@@ -14,6 +20,11 @@ name, it resolves the server, repeatedly attempts to join, and notifies you
   only automates clicks/keystrokes a human could do, against the game's own
   official server-list API and its own Direct Connect UI.
 - Multi-monitor, non-Windows, and games other than SCP:SL are out of scope.
+- Schedules and timed rotation are out of scope. A server group may run until
+  success, the configured attempt/runtime limit, or the user stops it.
+- Universal role detection on arbitrary public servers is out of scope. The
+  client does not provide a stable role event in `Player.log`.
+- Scraping an unofficial third-party browser is out of scope.
 
 ## Ground truth (verified live against the real client, 2026-08-24)
 
@@ -58,6 +69,81 @@ name, it resolves the server, repeatedly attempts to join, and notifies you
   it retries — same technique your Forza project (`capture.py`) already uses
   for menu clicks there. Unverified against SCP:SL specifically until built;
   see the fallback in the Driver loop below.
+
+## Approved feature design
+
+### Reliability-first connection strategy
+
+The driver should prefer the documented Steam/SCP:SL direct-connect path for
+both cold launches and warm retries when it works with the running client. The
+current calibrated UI path remains a compatibility fallback, not the primary
+retry mechanism. Every attempt is confirmed through the log watcher rather than
+assuming that launching a URI or sending a click succeeded.
+
+The retry state machine must explicitly represent: resolving, launching,
+waiting for menu, connecting, waiting for outcome, rejected/full/unclear,
+retrying, joined, stopped, and failed. A rejected attempt should be retried
+after the configured delay (default two seconds), while a timeout or unknown
+state should produce a useful diagnostic and obey the unclear-attempt limit.
+The loop must handle a running game, a cold game launch, the game already being
+on the Servers page, a connection overlay, a minimized/borderless window, 4K
+and DPI scaling, log rollover, and duplicate start requests without silently
+starting a second join loop.
+
+### Saved-server browser
+
+The app will provide a local browser backed by the existing AppData store. Each
+saved server contains a stable id, display name, endpoint, optional notes and
+group membership, plus last-known query data. Refreshing a server queries its
+endpoint with A2S_INFO and records player count, maximum players, reported
+name, latency, availability and last refresh time. The UI supports search,
+sorting, refresh, rename, edit endpoint, delete, and import/export.
+
+This is deliberately a **known-server browser** rather than a fake copy of the
+Internet tab. It gives reliable names and player counts for servers the user
+has saved without depending on restricted Northwood LobbyList credentials.
+
+### Ordered server groups
+
+Users can create named groups containing saved servers in an explicit order.
+Starting a group runs the same retry state machine against the first server,
+then advances to the next server when the current one reaches a terminal
+rejection, timeout policy, or per-server attempt limit. Success stops the group.
+After the last server, the default behavior is to loop back to the first until
+the user stops it or the global attempt/runtime limit is reached. The UI shows
+the active group, current server, position in the group, attempt number, and
+reason for advancing.
+
+### Public connection/round status
+
+For arbitrary public servers, the app exposes only statuses that can be
+verified client-side: launching, connecting, rejected/full-or-unknown,
+loading, joined, disconnected and stopped. The UI should avoid claiming that a
+server is definitely full when the log only proves a rejection. A future
+optional LabAPI companion can provide authoritative role and round data for a
+server the user controls, but that integration is not required by this design.
+
+### Four-page UI and onboarding
+
+The main window is organized into four persistent pages:
+
+1. **Auto-Join** — choose one server or a group, configure run limits, start/
+   stop, and view the live stage timeline and activity log.
+2. **Servers** — searchable saved-server cards/table, player counts and status,
+   refresh, edit, delete, group management, and remember/import actions.
+3. **Calibration & Diagnostics** — setup health, game detection, log path,
+   connection-method test, calibration only when the fallback driver needs it,
+   and a guided test that explains exactly what will happen before any input is
+   sent.
+4. **Settings** — retry delay, per-attempt timeout, maximum attempts/runtime
+   (`0` means unlimited), preferred connection method, background-input policy,
+   notifications, accent color and reset/export controls.
+
+First launch should guide the user through: locating SCP:SL, checking the log,
+adding one server, running a safe connection test, and optionally calibrating
+the fallback. The primary path must not require placing the mouse over a
+button. If calibration is needed, the app should clearly say that the game
+window will be focused temporarily and show a visible step-by-step overlay.
 
 ## Architecture
 
