@@ -2,7 +2,7 @@
 import os
 import threading
 
-from PySide6.QtCore import QObject, QPoint, Qt, Signal
+from PySide6.QtCore import QObject, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QCursor, QIcon, QPalette
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDialogButtonBox, QFrame, QGridLayout,
@@ -71,6 +71,8 @@ class CalibrationDialog(QDialog):
         layout.addWidget(self.step_label)
         self.instructions = label("", "body")
         layout.addWidget(self.instructions)
+        self.countdown = label("", "warning")
+        layout.addWidget(self.countdown)
         layout.addStretch()
         row = QHBoxLayout()
         self.capture_button = QPushButton("Capture current mouse position")
@@ -98,11 +100,27 @@ class CalibrationDialog(QDialog):
         self.progress.setValue(self.index)
 
     def capture(self):
-        point = QCursor.pos()
-        name, _ = self.steps[self.index]
-        self.cfg["click_points"][name] = [point.x(), point.y()]
-        self.index += 1
-        self.show_step()
+        if self.index >= len(self.steps) or not self.capture_button.isEnabled():
+            return
+        self.capture_button.setEnabled(False)
+        self.instructions.setText("Place your cursor over the named SCP:SL control. The app is hidden while the position is captured.")
+        self._countdown(3)
+
+    def _countdown(self, seconds):
+        if seconds:
+            self.countdown.setText(f"Capturing in {seconds}…")
+            QTimer.singleShot(1000, lambda: self._countdown(seconds - 1))
+            if seconds == 3:
+                self.hide()
+        else:
+            point = QCursor.pos()
+            name, _ = self.steps[self.index]
+            self.cfg["click_points"][name] = [point.x(), point.y()]
+            self.show()
+            self.countdown.clear()
+            self.capture_button.setEnabled(True)
+            self.index += 1
+            self.show_step()
 
 
 class HelpDialog(QDialog):

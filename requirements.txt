@@ -2,3 +2,7 @@ win11toast
 pytest
 pywebview
 PySide6
+Pillow
+winrt-Windows.Graphics.Imaging
+winrt-Windows.Media.Ocr
+winrt-Windows.Storage.Streams
