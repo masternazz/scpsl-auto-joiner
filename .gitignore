@@ -12,6 +12,9 @@ full-failed.png
 ui-*.png
 assets/generated/auto-join-frames/
 assets/generated/auto-join-palette.png
+assets/generated/auto-join-demo-frames/
+assets/generated/auto-join-demo-palette.png
+assets/generated/auto-join-demo-frames/
 *.log
 
 # Playwright/E2E scratch data

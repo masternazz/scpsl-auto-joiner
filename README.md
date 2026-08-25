@@ -4,7 +4,9 @@ Windows helper for retrying SCP: Secret Laboratory server joins.
 
 ![SCP:SL Auto-Joiner](assets/generated/github-banner-purple.png)
 
-![Auto-join flow](assets/generated/auto-join-flow.gif)
+![Auto-join demo](assets/generated/auto-join-demo.gif)
+
+[Open the full-size MP4 demo](assets/generated/auto-join-demo.mp4)
 
 ## Download
 
