@@ -10,6 +10,10 @@ CONFIG_PATH = os.path.join(app_dir(), "config.json")
 
 DEFAULTS = {
     "navigation_mode": "automatic",
+    # Qt 6 reports cursor positions in DPI-scaled logical pixels. Version 2
+    # calibration records native Win32 physical pixels so the coordinates
+    # match GetWindowRect/SendInput on 4K displays.
+    "calibration_space": None,
     "retry_interval_s": 6,
     "attempt_timeout_s": 20,
     "max_unclear": 3,
@@ -53,4 +57,7 @@ def save_config(cfg, path=None):
 
 
 def calibrated(cfg):
-    return all(tuple(cfg["click_points"].get(name, (0, 0))) != (0, 0) for name in REQUIRED_CLICK_POINTS)
+    return (
+        cfg.get("calibration_space") == "physical_v2"
+        and all(tuple(cfg["click_points"].get(name, (0, 0))) != (0, 0) for name in REQUIRED_CLICK_POINTS)
+    )

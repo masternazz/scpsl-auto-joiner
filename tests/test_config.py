@@ -30,7 +30,15 @@ def test_calibrated_false_until_all_points_set(tmp_path):
     assert config_mod.calibrated(cfg) is False
     for k in cfg["click_points"]:
         cfg["click_points"][k] = [1, 1]
+    cfg["calibration_space"] = "physical_v2"
     assert config_mod.calibrated(cfg) is True
+
+
+def test_legacy_dpi_scaled_calibration_is_not_used(tmp_path):
+    cfg = config_mod.load_config(str(tmp_path / "config.json"))
+    for key in config_mod.REQUIRED_CLICK_POINTS:
+        cfg["click_points"][key] = [500, 300]
+    assert config_mod.calibrated(cfg) is False
 
 
 def test_load_config_no_shared_mutable_defaults(tmp_path):

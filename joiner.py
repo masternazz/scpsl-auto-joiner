@@ -84,16 +84,17 @@ def click_layout(hwnd, name):
     return point
 
 
-def navigate_to_direct_connect(hwnd):
-    """Navigate using coordinates relative to the current game window."""
-    click_layout(hwnd, "servers")
-    time.sleep(0.8)
+def navigate_to_direct_connect(hwnd, open_servers=True):
+    """Open Direct Connect from News initially or from Servers on retries."""
+    if open_servers:
+        click_layout(hwnd, "servers")
+        time.sleep(0.8)
     click_layout(hwnd, "direct_connect")
     time.sleep(0.8)
 
 
-def prepare_direct_connect(hwnd, ip, port):
-    navigate_to_direct_connect(hwnd)
+def prepare_direct_connect(hwnd, ip, port, open_servers=True):
+    navigate_to_direct_connect(hwnd, open_servers=open_servers)
     click_layout(hwnd, "address_field")
     winput.replace_text(hwnd, f"{ip}:{port}")
 
@@ -133,9 +134,6 @@ def run(server_name, on_status=None, stop_event=None):
             notify.notify(APP_NAME, str(e))
             return "launch_failed"
 
-        status("Finding SCP:SL controls automatically...")
-        prepare_direct_connect(hwnd, ip, port)
-
         unclear = 0
         attempts = 0
         deadline = time.monotonic() + cfg["max_minutes"] * 60
@@ -146,6 +144,10 @@ def run(server_name, on_status=None, stop_event=None):
             attempts += 1
             status(f"Attempt {attempts}: connecting to {name} ({ip}:{port})...")
             try:
+                # A rejected Direct Connect attempt closes its dialog and
+                # returns to Servers. Only the first attempt needs to leave
+                # News; every retry reopens and refills Direct Connect.
+                prepare_direct_connect(hwnd, ip, port, open_servers=(attempts == 1))
                 outcome = attempt_join(hwnd, cfg, watcher, stop_event)
             except JoinError as e:
                 notify.notify(APP_NAME, str(e))
@@ -165,7 +167,6 @@ def run(server_name, on_status=None, stop_event=None):
 
             if outcome == "rejected":
                 unclear = 0
-                winput.post_key_tap(hwnd, winput.VK_ESCAPE)
                 if stop_event:
                     if stop_event.wait(cfg["retry_interval_s"]):
                         status("Stop requested.")

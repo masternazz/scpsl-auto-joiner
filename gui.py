@@ -2,20 +2,24 @@
 import os
 import threading
 
+# Set the process coordinate system before Qt creates any windows. Native
+# calibration and Win32 clicks then agree even at 150/200/250% scaling.
+import winput
+winput.set_dpi_awareness()
+
 from PySide6.QtCore import QObject, QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QCursor, QIcon, QPalette
+from PySide6.QtGui import QColor, QIcon, QPalette
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDialogButtonBox, QFrame, QGridLayout,
     QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
     QProgressBar, QScrollArea, QSizePolicy, QSpacerItem, QStackedWidget,
-    QTextEdit, QVBoxLayout, QWidget,
+    QSpinBox, QTextEdit, QVBoxLayout, QWidget,
 )
 
 import config as config_mod
 import joiner
 import logwatch
 import resolver
-import winput
 from app_paths import resource_path
 
 BG = "#0b0f14"
@@ -145,9 +149,12 @@ class CalibrationDialog(QDialog):
     def capture_current_point(self):
         if not self.active or self.index >= len(self.steps):
             return
-        point = QCursor.pos()
+        point = winput.get_cursor_pos()
+        if point is None:
+            self.overlay.message.setText("Could not read the mouse position. Move the mouse and press F8 again.")
+            return
         name, _ = self.steps[self.index]
-        self.cfg["click_points"][name] = [point.x(), point.y()]
+        self.cfg["click_points"][name] = [int(point[0]), int(point[1])]
         self.index += 1
         self.progress.setValue(self.index)
         if self.index < len(self.steps):
@@ -160,6 +167,7 @@ class CalibrationDialog(QDialog):
         self.overlay.close()
         self.active = False
         self.cfg["navigation_mode"] = "manual"
+        self.cfg["calibration_space"] = "physical_v2"
         config_mod.save_config(self.cfg)
         self.app.refresh()
         self.app.bridge.status.emit("Manual calibration saved and active.")
@@ -248,13 +256,15 @@ class MainWindow(QMainWindow):
         side.addWidget(label("CONTAINMENT OPERATIONS", "eyebrow"))
         self.join_nav = QPushButton("01   Auto-Join")
         self.setup_nav = QPushButton("02   Calibration")
-        self.help_nav = QPushButton("03   How it works")
-        for button in (self.join_nav, self.setup_nav, self.help_nav):
+        self.settings_nav = QPushButton("03   Settings")
+        self.help_nav = QPushButton("04   How it works")
+        for button in (self.join_nav, self.setup_nav, self.settings_nav, self.help_nav):
             button.setProperty("kind", "nav")
             side.addWidget(button)
         self.join_nav.clicked.connect(lambda: self.show_page(0))
         self.setup_nav.clicked.connect(lambda: self.show_page(1))
-        self.help_nav.clicked.connect(lambda: self.show_page(2))
+        self.settings_nav.clicked.connect(lambda: self.show_page(2))
+        self.help_nav.clicked.connect(lambda: self.show_page(3))
         side.addStretch()
         side.addWidget(label("LOCAL DESKTOP TOOL", "eyebrow"))
         side.addWidget(label("Servers and calibration stay on this computer.", "sideNote"))
@@ -263,6 +273,7 @@ class MainWindow(QMainWindow):
         self.pages = QStackedWidget()
         self.pages.addWidget(self.join_page())
         self.pages.addWidget(self.setup_page())
+        self.pages.addWidget(self.settings_page())
         self.pages.addWidget(self.help_page())
         shell_layout.addWidget(self.pages, 1)
         self.setCentralWidget(shell)
@@ -348,14 +359,87 @@ class MainWindow(QMainWindow):
         info, info_box = self.card(); info_box.addWidget(label("WHY THIS EXISTS", "eyebrow")); info_box.addWidget(label("Two navigation modes", "section")); info_box.addWidget(label("Automatic mode scales to the current SCP:SL window. Manual mode is a precise per-computer fallback when a display or game layout behaves differently.", "body")); layout.addWidget(info); layout.addStretch()
         return self.scroll_page(content)
 
+    def settings_page(self):
+        content, layout = self.page_content()
+        self.heading(layout, "LOCAL CONFIGURATION  /  ADVANCED", "Settings", "Tune retry behavior and inspect the exact native-pixel coordinates used on this computer.")
+
+        controls, box = self.card()
+        box.addWidget(label("NAVIGATION", "eyebrow"))
+        box.addWidget(label("Control mode", "section"))
+        box.addWidget(label("Automatic scales with the SCP:SL window. Manual uses the four physical screen positions captured by calibration.", "body"))
+        self.navigation_mode = QComboBox()
+        self.navigation_mode.addItem("Automatic — window-relative (recommended)", "automatic")
+        self.navigation_mode.addItem("Manual — calibrated physical pixels", "manual")
+        self.navigation_mode.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.navigation_mode.setMinimumContentsLength(12)
+        self.navigation_mode.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        box.addWidget(self.navigation_mode)
+        self.settings_feedback = label("", "helper")
+        box.addWidget(self.settings_feedback)
+        layout.addWidget(controls)
+
+        timing, timing_box = self.card()
+        timing_box.addWidget(label("RETRY LIMITS", "eyebrow"))
+        timing_box.addWidget(label("Timing and stop conditions", "section"))
+        timing_box.addWidget(label("The app confirms joined/rejected states from Player.log, so these values do not depend on screen resolution.", "body"))
+        timing_grid = QGridLayout(); timing_grid.setHorizontalSpacing(18); timing_grid.setVerticalSpacing(10)
+        fields = [
+            ("Retry delay", "Seconds between rejected attempts", "retry_interval", 1, 60),
+            ("Connection timeout", "Seconds allowed for one attempt", "attempt_timeout", 5, 180),
+            ("Maximum attempts", "Stop after this many tries", "max_attempts", 1, 1000),
+            ("Maximum runtime", "Stop after this many minutes", "max_minutes", 1, 240),
+        ]
+        for row, (title, hint, attr, minimum, maximum) in enumerate(fields):
+            text_box = QVBoxLayout(); text_box.setSpacing(1); text_box.addWidget(label(title, "body")); text_box.addWidget(label(hint, "helper"))
+            timing_grid.addLayout(text_box, row, 0)
+            spin = QSpinBox(); spin.setRange(minimum, maximum); spin.setMinimumWidth(130)
+            setattr(self, attr, spin); timing_grid.addWidget(spin, row, 1)
+        timing_grid.setColumnStretch(0, 1)
+        timing_box.addLayout(timing_grid)
+        layout.addWidget(timing)
+
+        points, points_box = self.card()
+        points_box.addWidget(label("MANUAL COORDINATES", "eyebrow"))
+        points_box.addWidget(label("Captured physical pixels", "section"))
+        points_box.addWidget(label("These values are resolution-specific. Use guided calibration after changing monitor layout, game resolution, or display scaling; then fine-tune here only if needed.", "body"))
+        point_grid = QGridLayout(); point_grid.setHorizontalSpacing(12); point_grid.setVerticalSpacing(8)
+        point_grid.addWidget(label("Control", "fieldLabel"), 0, 0)
+        point_grid.addWidget(label("X", "fieldLabel"), 0, 1)
+        point_grid.addWidget(label("Y", "fieldLabel"), 0, 2)
+        self.point_inputs = {}
+        for row, (key, title) in enumerate(CalibrationDialog.steps, 1):
+            point_grid.addWidget(label(title, "body"), row, 0)
+            x_spin = QSpinBox(); y_spin = QSpinBox()
+            for spin in (x_spin, y_spin):
+                spin.setRange(-32768, 32767); spin.setMinimumWidth(96)
+            point_grid.addWidget(x_spin, row, 1); point_grid.addWidget(y_spin, row, 2)
+            self.point_inputs[key] = (x_spin, y_spin)
+        point_grid.setColumnStretch(0, 1)
+        points_box.addLayout(point_grid)
+        layout.addWidget(points)
+
+        actions, actions_box = self.card()
+        actions_box.addWidget(label("APPLY", "eyebrow"))
+        self.save_settings_button = QPushButton("Save settings"); self.save_settings_button.setProperty("kind", "primary")
+        self.save_settings_button.clicked.connect(self.save_settings)
+        self.automatic_button = QPushButton("Use automatic controls"); self.automatic_button.clicked.connect(self.use_automatic_controls)
+        self.settings_calibration_button = QPushButton("Open calibration"); self.settings_calibration_button.clicked.connect(self.calibrate)
+        actions_box.addWidget(self.save_settings_button)
+        actions_box.addWidget(self.automatic_button)
+        actions_box.addWidget(self.settings_calibration_button)
+        layout.addWidget(actions)
+        layout.addStretch()
+        return self.scroll_page(content)
+
     def help_page(self):
         content, layout = self.page_content()
         self.heading(layout, "FIELD MANUAL  /  REFERENCE", "How it works", "A plain-language guide to every button and what the automation is doing.")
         for number, title, text in [
             ("01", "Automatic first", "Clicks scale to the current SCP:SL window, so different resolutions and borderless fullscreen layouts normally need no setup."),
             ("02", "Optional calibration", "Start once, hover each requested control, and press F8. A click-through guide advances through all four controls automatically; F9 cancels."),
-            ("03", "Remember a server", "Start the watcher and join normally. After Player.log reveals the IP and port, a popup asks you for a friendly name."),
-            ("04", "What it does not do", "No memory reading, packet manipulation, OCR, or anti-cheat bypass. It sends normal Windows input and reads Player.log."),
+            ("03", "Remember a server", "Start the watcher and join normally. Player.log supplies the endpoint, then the app asks the server directly for its public name and pre-fills the popup."),
+            ("04", "Reliable join detection", "Joined and rejected states come from SCP:SL's own Player.log. This is more reliable than OCR across 4K scaling, animations, and UI changes."),
+            ("05", "What it does not do", "No memory reading, packet manipulation, OCR, or anti-cheat bypass. It sends normal Windows input and reads Player.log."),
         ]:
             card, box = self.card(); box.addWidget(label(number, "number")); box.addWidget(label(title, "section")); box.addWidget(label(text, "body")); layout.addWidget(card)
         layout.addStretch()
@@ -363,7 +447,7 @@ class MainWindow(QMainWindow):
 
     def show_page(self, index):
         self.pages.setCurrentIndex(index)
-        for button, active in ((self.join_nav, index == 0), (self.setup_nav, index == 1), (self.help_nav, index == 2)):
+        for button, active in ((self.join_nav, index == 0), (self.setup_nav, index == 1), (self.settings_nav, index == 2), (self.help_nav, index == 3)):
             button.setProperty("active", active); button.style().unpolish(button); button.style().polish(button)
 
     def refresh(self):
@@ -374,8 +458,51 @@ class MainWindow(QMainWindow):
             self.server_box.setCurrentText(current)
         self.update_endpoint_preview(self.server_box.currentText())
         cfg = config_mod.load_config(); manual = cfg.get("navigation_mode") == "manual" and config_mod.calibrated(cfg)
-        text = "Manual calibration saved and active." if manual else "Automatic window-relative controls enabled."
+        legacy = cfg.get("navigation_mode") == "manual" and not config_mod.calibrated(cfg)
+        text = "Manual calibration saved and active." if manual else ("Old DPI-scaled calibration disabled — calibrate once again." if legacy else "Automatic window-relative controls enabled.")
         self.calibration_status.setText(text)
+        self.load_settings_form(cfg)
+
+    def load_settings_form(self, cfg):
+        if not hasattr(self, "navigation_mode"):
+            return
+        mode = "manual" if cfg.get("navigation_mode") == "manual" and config_mod.calibrated(cfg) else "automatic"
+        self.navigation_mode.setCurrentIndex(self.navigation_mode.findData(mode))
+        self.retry_interval.setValue(int(cfg.get("retry_interval_s", config_mod.DEFAULTS["retry_interval_s"])))
+        self.attempt_timeout.setValue(int(cfg.get("attempt_timeout_s", config_mod.DEFAULTS["attempt_timeout_s"])))
+        self.max_attempts.setValue(int(cfg.get("max_attempts", config_mod.DEFAULTS["max_attempts"])))
+        self.max_minutes.setValue(int(cfg.get("max_minutes", config_mod.DEFAULTS["max_minutes"])))
+        for key, (x_spin, y_spin) in self.point_inputs.items():
+            x, y = cfg["click_points"].get(key, (0, 0))
+            x_spin.setValue(int(x)); y_spin.setValue(int(y))
+        if cfg.get("navigation_mode") == "manual" and not config_mod.calibrated(cfg):
+            self.settings_feedback.setText("Your previous DPI-scaled calibration is disabled. Run calibration once to capture correct 4K physical pixels.")
+        else:
+            self.settings_feedback.setText("Manual calibration is active." if mode == "manual" else "Automatic window-relative controls are active.")
+
+    def save_settings(self):
+        cfg = config_mod.load_config()
+        cfg["navigation_mode"] = self.navigation_mode.currentData()
+        cfg["retry_interval_s"] = self.retry_interval.value()
+        cfg["attempt_timeout_s"] = self.attempt_timeout.value()
+        cfg["max_attempts"] = self.max_attempts.value()
+        cfg["max_minutes"] = self.max_minutes.value()
+        for key, (x_spin, y_spin) in self.point_inputs.items():
+            cfg["click_points"][key] = [x_spin.value(), y_spin.value()]
+        if cfg["navigation_mode"] == "manual" and not config_mod.calibrated(cfg):
+            self.settings_feedback.setText("Manual mode needs a fresh guided calibration before it can be enabled.")
+            return
+        config_mod.save_config(cfg)
+        self.settings_feedback.setText("Settings saved.")
+        self.calibration_status.setText("Manual calibration saved and active." if cfg["navigation_mode"] == "manual" else "Automatic window-relative controls enabled.")
+
+    def use_automatic_controls(self):
+        cfg = config_mod.load_config()
+        cfg["navigation_mode"] = "automatic"
+        config_mod.save_config(cfg)
+        self.load_settings_form(cfg)
+        self.calibration_status.setText("Automatic window-relative controls enabled.")
+        self.settings_feedback.setText("Automatic controls enabled and saved.")
 
     def filter_servers(self, query):
         current = self.server_box.currentText()

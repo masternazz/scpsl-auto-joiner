@@ -98,17 +98,12 @@ def test_guided_calibration_hides_once_and_advances_with_hotkey(monkeypatch):
         },
     }
     saved = []
-    points = iter((QPoint(100, 50), QPoint(490, 180), QPoint(590, 510), QPoint(630, 580)))
-
-    class FakeCursor:
-        @staticmethod
-        def pos():
-            return next(points)
+    points = iter(((200, 100), (980, 360), (1180, 1020), (1260, 1160)))
 
     monkeypatch.setattr(gui.resolver, "load_servers", lambda: {})
     monkeypatch.setattr(gui.config_mod, "load_config", lambda: cfg)
     monkeypatch.setattr(gui.config_mod, "save_config", lambda value: saved.append(value.copy()))
-    monkeypatch.setattr(gui, "QCursor", FakeCursor)
+    monkeypatch.setattr(gui.winput, "get_cursor_pos", lambda: next(points))
     window = gui.MainWindow()
     visibility_events = []
     original_hide, original_show = window.hide, window.show
@@ -135,10 +130,11 @@ def test_guided_calibration_hides_once_and_advances_with_hotkey(monkeypatch):
 
     assert dialog.result() == QDialog.Accepted
     assert cfg["navigation_mode"] == "manual"
-    assert cfg["click_points"]["servers_tab"] == [100, 50]
-    assert cfg["click_points"]["direct_connect"] == [490, 180]
-    assert cfg["click_points"]["ip_field"] == [590, 510]
-    assert cfg["click_points"]["connect_button"] == [630, 580]
+    assert cfg["calibration_space"] == "physical_v2"
+    assert cfg["click_points"]["servers_tab"] == [200, 100]
+    assert cfg["click_points"]["direct_connect"] == [980, 360]
+    assert cfg["click_points"]["ip_field"] == [1180, 1020]
+    assert cfg["click_points"]["connect_button"] == [1260, 1160]
     assert visibility_events == ["hide", "show"]
     assert saved
     window.close()
@@ -156,4 +152,89 @@ def test_main_window_opens_calibration_modelessly(monkeypatch):
     assert window.calibration_dialog.isVisible()
     assert window.isVisible()
     window.calibration_dialog.reject()
+    window.close()
+
+
+def test_settings_page_saves_timing_mode_and_coordinates(monkeypatch):
+    qt_app = app()
+    cfg = {
+        "navigation_mode": "manual",
+        "calibration_space": "physical_v2",
+        "retry_interval_s": 6,
+        "attempt_timeout_s": 20,
+        "max_unclear": 3,
+        "max_attempts": 100,
+        "max_minutes": 30,
+        "click_points": {
+            "play": [0, 0], "servers_tab": [200, 100], "internet_tab": [0, 0],
+            "direct_connect": [980, 360], "ip_field": [1180, 1020],
+            "connect_button": [1260, 1160],
+        },
+    }
+    saved = []
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: {})
+    monkeypatch.setattr(gui.config_mod, "load_config", lambda: cfg.copy() | {"click_points": {k: v[:] for k, v in cfg["click_points"].items()}})
+    monkeypatch.setattr(gui.config_mod, "save_config", lambda value: saved.append(value))
+
+    window = gui.MainWindow()
+    window.settings_nav.click()
+    qt_app.processEvents()
+    assert window.pages.currentIndex() == 2
+
+    window.retry_interval.setValue(9)
+    window.attempt_timeout.setValue(35)
+    window.max_attempts.setValue(250)
+    window.max_minutes.setValue(60)
+    window.point_inputs["connect_button"][0].setValue(2500)
+    window.point_inputs["connect_button"][1].setValue(1400)
+    window.save_settings_button.click()
+    qt_app.processEvents()
+
+    assert saved
+    assert saved[-1]["retry_interval_s"] == 9
+    assert saved[-1]["attempt_timeout_s"] == 35
+    assert saved[-1]["max_attempts"] == 250
+    assert saved[-1]["max_minutes"] == 60
+    assert saved[-1]["click_points"]["connect_button"] == [2500, 1400]
+    window.close()
+
+
+def test_settings_actions_fit_at_minimum_window_width(monkeypatch):
+    qt_app = app()
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: {})
+    window = gui.MainWindow()
+    window.resize(window.minimumSize())
+    window.show_page(2)
+    window.show()
+    qt_app.processEvents()
+
+    scroll = window.pages.currentWidget()
+    viewport_right = scroll.viewport().mapToGlobal(QPoint(scroll.viewport().width(), 0)).x()
+    for button in (window.save_settings_button, window.automatic_button, window.settings_calibration_button):
+        button_right = button.mapToGlobal(QPoint(button.width(), 0)).x()
+        assert button_right <= viewport_right
+    assert scroll.verticalScrollBar().maximum() > 0
+    window.close()
+
+
+def test_detected_server_name_prefills_confirmation(monkeypatch):
+    qt_app = app()
+    seen = {}
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: {})
+    monkeypatch.setattr(gui.resolver, "remember_server", lambda name, ip, port: seen.update(name=name, ip=ip, port=port))
+
+    def fake_get_text(_parent, _title, prompt, _mode, suggested):
+        seen["prompt"] = prompt
+        seen["suggested"] = suggested
+        return suggested, True
+
+    monkeypatch.setattr(gui.QInputDialog, "getText", fake_get_text)
+    window = gui.MainWindow()
+    window.server_saved("158.69.52.5:7779", "Northwood Official Server - Canada #3")
+    qt_app.processEvents()
+
+    assert seen["suggested"] == "Northwood Official Server - Canada #3"
+    assert seen["name"] == "Northwood Official Server - Canada #3"
+    assert seen["ip"] == "158.69.52.5"
+    assert seen["port"] == 7779
     window.close()
