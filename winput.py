@@ -112,6 +112,28 @@ def get_window_rect(hwnd):
     return None
 
 
+def get_client_rect(hwnd):
+    """Return the client rectangle in screen coordinates.
+
+    Unity menu coordinates belong to the client surface, not the title bar or
+    non-client frame. Returning screen coordinates keeps this usable by both
+    PostMessage and SendInput callers.
+    """
+    if not hwnd:
+        return None
+    try:
+        u32 = ctypes.windll.user32
+        rect = _wintypes.RECT()
+        if not u32.GetClientRect(hwnd, ctypes.byref(rect)):
+            return None
+        origin = _wintypes.POINT(0, 0)
+        if not u32.ClientToScreen(hwnd, ctypes.byref(origin)):
+            return None
+        return origin.x, origin.y, origin.x + rect.right, origin.y + rect.bottom
+    except Exception:
+        return None
+
+
 def focus_window(hwnd) -> bool:
     """Best-effort bring `hwnd` to the foreground — needed before the
     SendInput fallback path, which always targets whatever window is
