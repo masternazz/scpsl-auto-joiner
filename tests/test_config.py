@@ -30,7 +30,7 @@ def test_load_config_migrates_old_retry_delay_to_two_seconds(tmp_path):
 
     cfg = config_mod.load_config(path)
 
-    assert cfg["config_version"] == 4
+    assert cfg["config_version"] == 5
     assert cfg["retry_interval_s"] == 2
 
 
@@ -44,7 +44,7 @@ def test_version_two_manual_mode_migrates_to_no_input_steam_mode(tmp_path):
 
     cfg = config_mod.load_config(path)
 
-    assert cfg["config_version"] == 4
+    assert cfg["config_version"] == 5
     assert cfg["navigation_mode"] == "automatic"
 
 
@@ -87,7 +87,7 @@ def test_version_three_config_migrates_task_six_defaults_without_losing_preferen
 
     cfg = config_mod.load_config(path)
 
-    assert cfg["config_version"] == 4
+    assert cfg["config_version"] == 5
     assert cfg["connection_method"] == "automatic"
     assert cfg["group_loop"] is True
     assert cfg["browser_refresh_timeout_s"] == 2

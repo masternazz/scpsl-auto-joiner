@@ -328,9 +328,9 @@ def dismiss_connection_overlay(hwnd):
     """Close SCP:SL's server-full/disconnect overlay before retrying."""
     if not hwnd:
         return
-    # Automatic mode must never move the cursor or activate SCP:SL. The
-    # explicit foreground connection method remains available for users who
-    # choose it in Settings.
+    # Never use SendInput here: this runs during retry cleanup and must not
+    # move the user's cursor, activate another window, or send Escape to the
+    # user's foreground application.
     winput.post_key_tap(hwnd, winput.VK_ESCAPE)
 
 
