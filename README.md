@@ -14,6 +14,8 @@ Download the latest Windows build from the [Releases page](https://github.com/ma
 
 The portable ZIP runs from any folder. The setup installer creates a per-user installation and optional shortcuts. Neither package installs SCP: Secret Laboratory, Steam, or any third-party game files.
 
+> **Early release notice:** This is an early Windows build and has not been tested on every SCP:SL server, monitor resolution, DPI setting, or Windows configuration. Please back up your local data, expect bugs, and [report issues on GitHub](https://github.com/masternazz/scpsl-auto-joiner/issues) with your Windows version, display setup, reproduction steps, and the app log.
+
 ## What it does
 
 - Remembers server names and endpoints in a local server list

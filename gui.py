@@ -10,8 +10,8 @@ from html import escape
 import winput
 winput.set_dpi_awareness()
 
-from PySide6.QtCore import QObject, QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QIcon, QPalette, QPixmap
+from PySide6.QtCore import QObject, QTimer, QUrl, Qt, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QCompleter, QDialog, QDialogButtonBox, QFrame, QGridLayout,
     QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
@@ -232,6 +232,14 @@ class HelpDialog(QDialog):
             "It does not read memory, use OCR, modify packets, or bypass anti-cheat. It uses normal launch arguments, targeted window messages, and Player.log."
         )
         layout.addWidget(text)
+        report = QPushButton("Report a bug on GitHub")
+        report.setProperty("kind", "primary")
+        report.setToolTip("Open the issue form with steps for reporting a problem")
+        report.clicked.connect(self.report_bug)
+        layout.addWidget(report)
+
+    def report_bug(self):
+        QDesktopServices.openUrl(QUrl("https://github.com/masternazz/scpsl-auto-joiner/issues/new"))
 
 
 class MainWindow(QMainWindow):
