@@ -317,21 +317,27 @@ def connect_once(hwnd, cfg, watcher, ip, port, open_servers=True,
     if not attempt.connected:
         if attempt.method == "direct":
             raise JoinError("SCP:SL launched but did not start the direct connection.")
+        if attempt.method == "foreground":
+            raise JoinError("SCP:SL did not start the foreground connection; check the game window and controls.")
         raise JoinError(
-            "SCP:SL ignored the background input. Automatic mode will not take control of your mouse; "
-            "check the game window or choose Foreground mode explicitly."
+            "SCP:SL ignored background input. Choose Automatic or Foreground for this client, or keep Background-only for no-input mode."
         )
     return watcher.wait_for_outcome(cfg["attempt_timeout_s"], stop_event=stop_event)
 
 
-def dismiss_connection_overlay(hwnd):
+def dismiss_connection_overlay(hwnd, input_mode="background"):
     """Close SCP:SL's server-full/disconnect overlay before retrying."""
     if not hwnd:
         return
-    # Never use SendInput here: this runs during retry cleanup and must not
-    # move the user's cursor, activate another window, or send Escape to the
-    # user's foreground application.
-    winput.post_key_tap(hwnd, winput.VK_ESCAPE)
+    if input_mode == "foreground":
+        winput.foreground_key_tap(hwnd, winput.VK_ESCAPE)
+    else:
+        winput.post_key_tap(hwnd, winput.VK_ESCAPE)
+
+
+def retry_input_mode(cfg):
+    """Return the input path used to dismiss a failed connection overlay."""
+    return "foreground" if cfg.get("connection_method", "automatic") in ("automatic", "foreground") else "background"
 
 
 def wait_for_retry_delay(delay, stop_event=None):
@@ -423,7 +429,7 @@ def run_group(group_id, on_status=None, stop_event=None):
             else:
                 unclear[index] += 1
                 if unclear[index] < cfg["max_unclear"]:
-                    winput.post_key_tap(hwnd, winput.VK_ESCAPE)
+                    dismiss_connection_overlay(hwnd, retry_input_mode(cfg))
                     if wait_for_retry_delay(cfg["retry_interval_s"], stop_event):
                         status("Stop requested.")
                         return "stopped"
@@ -441,7 +447,7 @@ def run_group(group_id, on_status=None, stop_event=None):
                 if hwnd is None:
                     notify.notify(APP_NAME, "SCP:SL is running, but its window could not be found for the next server.")
                     return "unclear"
-            dismiss_connection_overlay(hwnd)
+            dismiss_connection_overlay(hwnd, retry_input_mode(cfg))
             if wait_for_retry_delay(cfg["retry_interval_s"], stop_event):
                 status("Stop requested.")
                 return "stopped"
@@ -563,7 +569,7 @@ def run(server_name, on_status=None, stop_event=None):
             if unclear >= cfg["max_unclear"]:
                 notify.notify(APP_NAME, f"Stuck on an unclear result ({outcome}) — check the game.")
                 return "unclear"
-            winput.post_key_tap(hwnd, winput.VK_ESCAPE)
+            dismiss_connection_overlay(hwnd, retry_input_mode(cfg))
             if wait_for_retry_delay(cfg["retry_interval_s"], stop_event):
                 status("Stop requested.")
                 return "stopped"

@@ -422,7 +422,7 @@ def _configure_group_run(monkeypatch, targets, outcomes, *, max_attempts=0, max_
     monkeypatch.setattr(joiner.winput, "find_game_window", lambda _title: 123)
     monkeypatch.setattr(joiner.logwatch, "LogWatcher", FakeWatcher)
     monkeypatch.setattr(joiner.transport, "choose_method", lambda *_args, **_kwargs: "background")
-    monkeypatch.setattr(joiner, "dismiss_connection_overlay", lambda _hwnd: None)
+    monkeypatch.setattr(joiner, "dismiss_connection_overlay", lambda *_args: None)
     monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
 
     def attempt(_hwnd, _cfg, _watcher, ip, _port, **_kwargs):
@@ -591,7 +591,7 @@ def test_automatic_direct_connect_ratio_targets_direct_connect_not_the_left_rent
     assert joiner.layout_point(123, "direct_connect") != rent_area_point
 
 
-def test_automatic_warm_retries_use_background_navigation_without_steam_dialog(monkeypatch):
+def test_automatic_warm_retries_use_verified_foreground_navigation(monkeypatch):
     events = []
     cfg = {
         "connection_method": "automatic",
@@ -617,12 +617,9 @@ def test_automatic_warm_retries_use_background_navigation_without_steam_dialog(m
     monkeypatch.setattr(joiner.logwatch, "LogWatcher", BackgroundWatcher)
     monkeypatch.setattr(joiner.winput, "find_game_window", lambda _title: 123)
     monkeypatch.setattr(joiner.winput, "get_window_rect", lambda _hwnd: (0, 0, 1000, 1000))
-    monkeypatch.setattr(joiner.winput, "post_click", lambda _hwnd, x, y: events.append(("click", x, y)))
-    monkeypatch.setattr(joiner.winput, "replace_text", lambda _hwnd, text: events.append(("text", text)))
-    monkeypatch.setattr(joiner.winput, "post_key_tap", lambda _hwnd, key: events.append(("key", key)))
-    monkeypatch.setattr(joiner.winput, "foreground_click", lambda *_args: (_ for _ in ()).throw(AssertionError("must not use foreground click")))
-    monkeypatch.setattr(joiner.winput, "foreground_replace_text", lambda *_args: (_ for _ in ()).throw(AssertionError("must not use foreground text")))
-    monkeypatch.setattr(joiner.winput, "foreground_key_tap", lambda *_args: (_ for _ in ()).throw(AssertionError("must not use foreground key")))
+    monkeypatch.setattr(joiner.winput, "foreground_click", lambda _hwnd, x, y: events.append(("click", x, y)))
+    monkeypatch.setattr(joiner.winput, "foreground_replace_text", lambda _hwnd, text: events.append(("text", text)))
+    monkeypatch.setattr(joiner.winput, "foreground_key_tap", lambda _hwnd, key: events.append(("key", key)))
     monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
     monkeypatch.setattr(joiner.time, "sleep", lambda _seconds: None)
 
@@ -634,7 +631,6 @@ def test_automatic_warm_retries_use_background_navigation_without_steam_dialog(m
         ("text", "1.2.3.4:7778"),
         ("click", 530, 550),
         ("key", joiner.winput.VK_RETURN),
-        ("key", joiner.winput.VK_ESCAPE),
         ("click", 440, 193),
         ("click", 500, 490),
         ("text", "1.2.3.4:7778"),
