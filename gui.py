@@ -606,7 +606,7 @@ class MainWindow(QMainWindow):
         connection, connection_box = self.card()
         connection_box.addWidget(label("CONNECTION METHOD", "eyebrow"))
         connection_box.addWidget(label("Prefer a safe connection path", "section"))
-        connection_box.addWidget(label("Automatic uses direct cold start and background-only retries. It never moves your cursor or takes keyboard focus. Foreground input is opt-in for Unity builds that ignore background input.", "body"))
+        connection_box.addWidget(label("Automatic tries background input first, then uses the reliable GUI fallback if SCP:SL ignores it. Background-only never moves your cursor; Foreground is the explicit compatibility mode.", "body"))
         self.connection_method_box = QComboBox()
         for title, method in (
             ("Automatic - direct cold start, background retry (recommended)", "automatic"),
@@ -797,11 +797,11 @@ class MainWindow(QMainWindow):
         checks = self._readiness_checks()
         method = cfg.get("connection_method", "automatic")
         method_text = {
-            "automatic": "Automatic (direct cold start, background-only warm retries)",
+            "automatic": "Automatic (background first, GUI fallback)",
             "direct": "Direct (supported +connect cold start)",
             "background": "Background (targeted SCP:SL window messages)",
             "foreground": "Foreground (compatibility fallback)",
-        }.get(method, "Automatic (direct cold start, background-only warm retries)")
+        }.get(method, "Automatic (background first, GUI fallback)")
         game_text = "detected" if checks["executable"] else "not detected"
         log_text = "writable" if checks["log_writable"] else ("found but not writable" if checks["log_exists"] else "not found yet")
         if cfg.get("navigation_mode") == "manual" and config_mod.calibrated(cfg):
