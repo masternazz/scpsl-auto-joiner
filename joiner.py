@@ -32,7 +32,7 @@ LAYOUT_POINTS = {
     # SCP:SL's 4K borderless UI is laid out in a 1920x1080 logical canvas
     # and scaled to the physical window. These centers are measured from the
     # shipped client rather than assuming the controls fill the window.
-    "direct_connect": (0.525, 0.193),
+    "direct_connect": (0.44, 0.193),
     "address_field": (0.50, 0.49),
     "connect": (0.53, 0.55),
 }

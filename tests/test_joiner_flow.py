@@ -208,13 +208,13 @@ def test_full_run_retries_with_background_window_messages(monkeypatch):
     assert result == "success"
     assert events == [
         ("click", 120, 50),
-        ("click", 525, 193),
+        ("click", 440, 193),
         ("click", 500, 490),
         ("text", "1.2.3.4:7778"),
         ("click", 530, 550),
         ("key", joiner.winput.VK_RETURN),
         ("key", joiner.winput.VK_ESCAPE),
-        ("click", 525, 193),
+        ("click", 440, 193),
         ("click", 500, 490),
         ("text", "1.2.3.4:7778"),
         ("click", 530, 550),
@@ -585,8 +585,8 @@ def test_run_group_rejects_missing_or_empty_group_without_starting_game(monkeypa
 def test_automatic_direct_connect_ratio_targets_direct_connect_not_the_left_rent_area(monkeypatch):
     monkeypatch.setattr(joiner.winput, "get_window_rect", lambda _hwnd: (0, 0, 2048, 1152))
 
-    assert joiner.LAYOUT_POINTS["direct_connect"] == (0.525, 0.193)
-    assert joiner.layout_point(123, "direct_connect") == (1075, 222)
+    assert joiner.LAYOUT_POINTS["direct_connect"] == (0.44, 0.193)
+    assert joiner.layout_point(123, "direct_connect") == (901, 222)
     rent_area_point = (int(2048 * 0.41), int(1152 * 0.19))
     assert joiner.layout_point(123, "direct_connect") != rent_area_point
 
@@ -629,13 +629,13 @@ def test_automatic_warm_retries_use_background_navigation_without_steam_dialog(m
     assert joiner.run("Canada #2") == "success"
     assert events == [
         ("click", 120, 50),
-        ("click", 525, 193),
+        ("click", 440, 193),
         ("click", 500, 490),
         ("text", "1.2.3.4:7778"),
         ("click", 530, 550),
         ("key", joiner.winput.VK_RETURN),
         ("key", joiner.winput.VK_ESCAPE),
-        ("click", 525, 193),
+        ("click", 440, 193),
         ("click", 500, 490),
         ("text", "1.2.3.4:7778"),
         ("click", 530, 550),
