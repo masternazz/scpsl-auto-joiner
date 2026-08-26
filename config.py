@@ -3,11 +3,12 @@ points. See docs/superpowers/specs/2026-08-24-scpsl-autojoin-design.md."""
 import copy
 import json
 import os
+import sys
 
 from app_paths import app_dir
 
 CONFIG_PATH = os.path.join(app_dir(), "config.json")
-CONFIG_VERSION = 4
+CONFIG_VERSION = 5
 
 DEFAULTS = {
     "config_version": CONFIG_VERSION,
@@ -30,6 +31,7 @@ DEFAULTS = {
     "max_minutes": 30,
     "auto_update": False,
     "accent": "violet",
+    "custom_accent": "#b186ff",
     "click_points": {
         "play": [0, 0],
         "servers_tab": [0, 0],
@@ -46,6 +48,26 @@ REQUIRED_CLICK_POINTS = ("servers_tab", "direct_connect", "ip_field", "connect_b
 def load_config(path=None):
     path = path or CONFIG_PATH
     if not os.path.exists(path):
+        # v1-v4 portable builds kept config beside the executable. Preserve
+        # that data when the app moves to the canonical LocalAppData store.
+        legacy_paths = []
+        if path == CONFIG_PATH:
+            legacy_paths.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json"))
+            if getattr(sys, "frozen", False):
+                legacy_paths.append(os.path.join(os.path.dirname(sys.executable), "config.json"))
+        for legacy in legacy_paths:
+            if os.path.isfile(legacy) and os.path.abspath(legacy) != os.path.abspath(path):
+                try:
+                    with open(legacy, encoding="utf-8") as f:
+                        data = json.load(f)
+                    merged = copy.deepcopy(DEFAULTS)
+                    merged.update({k: v for k, v in data.items() if k != "click_points"})
+                    merged["click_points"].update(data.get("click_points", {}))
+                    merged["config_version"] = CONFIG_VERSION
+                    save_config(merged, path)
+                    return merged
+                except (OSError, ValueError, TypeError):
+                    pass
         save_config(DEFAULTS, path)
         return copy.deepcopy(DEFAULTS)
     with open(path, encoding="utf-8") as f:

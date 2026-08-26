@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
     QProgressBar, QScrollArea, QSizePolicy, QSpacerItem, QStackedWidget, QTabWidget,
     QCheckBox, QListWidget, QListWidgetItem, QSpinBox, QTextEdit, QVBoxLayout, QWidget,
+    QColorDialog,
 )
 
 import config as config_mod
@@ -45,11 +46,15 @@ ACCENT_OPTIONS = {
     "amber": ("Amber", "#ffb74d"),
     "green": ("Green", "#68d391"),
     "red": ("Red", "#ef8585"),
+    "custom": ("Custom…", "#b186ff"),
 }
 
 
 def set_accent(name):
     global CYAN
+    if isinstance(name, str) and name.startswith("#"):
+        CYAN = name
+        return
     CYAN = ACCENT_OPTIONS.get(name, ACCENT_OPTIONS["violet"])[1]
 
 
@@ -606,7 +611,7 @@ class MainWindow(QMainWindow):
         connection, connection_box = self.card()
         connection_box.addWidget(label("CONNECTION METHOD", "eyebrow"))
         connection_box.addWidget(label("Prefer a safe connection path", "section"))
-        connection_box.addWidget(label("Automatic tries background input first, then uses the reliable GUI fallback if SCP:SL ignores it. Background-only never moves your cursor; Foreground is the explicit compatibility mode.", "body"))
+        connection_box.addWidget(label("Automatic and Background modes target only SCP:SL and never move your cursor or seize your keyboard. Foreground is a separate opt-in mode for compatibility and will take control briefly.", "body"))
         self.connection_method_box = QComboBox()
         for title, method in (
             ("Automatic - direct cold start, background retry (recommended)", "automatic"),
@@ -730,6 +735,9 @@ class MainWindow(QMainWindow):
         self.accent_box.setMinimumWidth(170)
         self.accent_box.currentIndexChanged.connect(lambda _: self.preview_accent())
         color_row.addWidget(self.accent_box)
+        self.custom_accent_button = QPushButton("Choose…")
+        self.custom_accent_button.clicked.connect(self.choose_custom_accent)
+        color_row.addWidget(self.custom_accent_button)
         actions_box.addLayout(color_row)
         self.save_settings_button = QPushButton("Save settings"); self.save_settings_button.setProperty("kind", "primary")
         self.save_settings_button.clicked.connect(self.save_settings)
@@ -797,11 +805,11 @@ class MainWindow(QMainWindow):
         checks = self._readiness_checks()
         method = cfg.get("connection_method", "automatic")
         method_text = {
-            "automatic": "Automatic (background first, GUI fallback)",
+            "automatic": "Automatic (background-only, safe input)",
             "direct": "Direct (supported +connect cold start)",
             "background": "Background (targeted SCP:SL window messages)",
             "foreground": "Foreground (compatibility fallback)",
-        }.get(method, "Automatic (background first, GUI fallback)")
+        }.get(method, "Automatic (background-only, safe input)")
         game_text = "detected" if checks["executable"] else "not detected"
         log_text = "writable" if checks["log_writable"] else ("found but not writable" if checks["log_exists"] else "not found yet")
         if cfg.get("navigation_mode") == "manual" and config_mod.calibrated(cfg):
@@ -917,6 +925,7 @@ class MainWindow(QMainWindow):
         accent = cfg.get("accent", "violet")
         index = self.accent_box.findData(accent)
         self.accent_box.setCurrentIndex(index if index >= 0 else 0)
+        self.custom_accent = cfg.get("custom_accent", "#b186ff")
         for key, (x_spin, y_spin) in self.point_inputs.items():
             x, y = cfg["click_points"].get(key, (0, 0))
             x_spin.setValue(int(x)); y_spin.setValue(int(y))
@@ -938,13 +947,14 @@ class MainWindow(QMainWindow):
         cfg["group_loop"] = self.group_loop_checkbox.isChecked()
         cfg["browser_refresh_timeout_s"] = self.browser_refresh_timeout.value()
         cfg["accent"] = self.accent_box.currentData() or "violet"
+        cfg["custom_accent"] = getattr(self, "custom_accent", "#b186ff")
         for key, (x_spin, y_spin) in self.point_inputs.items():
             cfg["click_points"][key] = [x_spin.value(), y_spin.value()]
         if cfg["navigation_mode"] == "manual" and not config_mod.calibrated(cfg):
             self.settings_feedback.setText("Manual mode needs a fresh guided calibration before it can be enabled.")
             return
         config_mod.save_config(cfg)
-        self.apply_accent(cfg["accent"])
+        self.apply_accent(cfg["custom_accent"] if cfg["accent"] == "custom" else cfg["accent"])
         self.run_diagnostics()
         if cfg["max_attempts"] == 0 and cfg["max_minutes"] == 0:
             self.settings_feedback.setText("Settings saved. Auto-join will run until joined or stopped.")
@@ -972,7 +982,17 @@ class MainWindow(QMainWindow):
 
     def preview_accent(self):
         if hasattr(self, "accent_box"):
-            self.apply_accent(self.accent_box.currentData() or "violet")
+            name = self.accent_box.currentData() or "violet"
+            self.apply_accent(getattr(self, "custom_accent", "#b186ff") if name == "custom" else name)
+
+    def choose_custom_accent(self):
+        current = QColor(getattr(self, "custom_accent", "#b186ff"))
+        color = QColorDialog.getColor(current, self, "Choose accent color")
+        if color.isValid():
+            self.custom_accent = color.name().lower()
+            custom_index = self.accent_box.findData("custom")
+            self.accent_box.setCurrentIndex(custom_index)
+            self.preview_accent()
 
     def apply_accent(self, name):
         set_accent(name)

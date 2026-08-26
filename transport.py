@@ -64,19 +64,9 @@ def connect_with_fallback(ctx) -> None:
         return
 
     # Automatic mode is deliberately background-only. Unity can ignore window
-    # messages, but silently switching to SendInput would move the user's
-    # cursor, steal focus, and type into the wrong application. The caller
-    # reports the missing marker and applies its normal retry policy instead.
+    # messages, but switching to SendInput would move the user's cursor, steal
+    # focus, and type into the wrong application. The caller reports the
+    # missing marker and applies its normal retry policy instead.
     ctx.method = "background"
     ctx.start_background()
     ctx.connected = ctx.wait_for_connecting()
-    if (
-        not ctx.connected
-        and not ctx.stopped()
-        and ctx.config.get("connection_method", "automatic") == "automatic"
-    ):
-        if hasattr(ctx, "recover_foreground"):
-            ctx.recover_foreground()
-        ctx.method = "foreground"
-        ctx.start_foreground()
-        ctx.connected = ctx.wait_for_connecting()
