@@ -63,7 +63,15 @@ def connect_with_fallback(ctx) -> None:
         ctx.connected = ctx.wait_for_connecting()
         return
 
-    # Automatic/background modes never synthesize global input.
+    # Try the focus-preserving path first. Unity's newer Input System can
+    # ignore window messages, though; in that case a missed log marker means
+    # the game did not receive the action, so use the reliable GUI path for
+    # this attempt. The foreground helper restores the user's cursor and
+    # foreground window after each action.
     ctx.method = "background"
     ctx.start_background()
     ctx.connected = ctx.wait_for_connecting()
+    if not ctx.connected and not ctx.stopped():
+        ctx.method = "foreground"
+        ctx.start_foreground()
+        ctx.connected = ctx.wait_for_connecting()
