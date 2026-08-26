@@ -75,7 +75,7 @@ Windows 10 is a supported target; the installer refuses older Windows versions s
 
 SCP:SL writes connection events to `Player.log`. The app watches new log entries and classifies each attempt as connecting, accepted, rejected, cancelled, full, or timed out. This keeps join-state detection independent of monitor resolution.
 
-The app normally sends input to the SCP:SL window so you can use other applications while it waits. Automatic and Background-only modes never move the cursor, steal focus, or type into another app. Choose the explicit Foreground mode only if you accept temporary mouse and keyboard control for a game build that ignores background input.
+The app normally sends input to the SCP:SL window so you can use other applications while it waits. On the tested SCP:SL client, Automatic uses the verified GUI path for warm retries and briefly controls/restores the game window because Unity ignores background messages. Background-only never moves the cursor but may be ignored by SCP:SL.
 
 ## Local data
 

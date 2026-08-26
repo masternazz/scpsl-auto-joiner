@@ -38,9 +38,10 @@ def choose_method(config, game_running) -> ConnectionMethod:
         return "foreground"
     if preferred == "background":
         return "background"
-    # ``steam://connect`` opens Steam's Game Info dialog for full/rejected
-    # servers. Automatic retries must stay inside SCP:SL's existing window.
-    return "background"
+    # This client's Unity Input System ignores PostMessage. Use the verified
+    # foreground path for warm connections; foreground_click restores the
+    # user's prior cursor and window after each operation.
+    return "foreground"
 
 
 def connect_with_fallback(ctx) -> None:
@@ -63,10 +64,10 @@ def connect_with_fallback(ctx) -> None:
         ctx.connected = ctx.wait_for_connecting()
         return
 
-    # Automatic mode is deliberately background-only. Unity can ignore window
-    # messages, but switching to SendInput would move the user's cursor, steal
-    # focus, and type into the wrong application. The caller reports the
-    # missing marker and applies its normal retry policy instead.
-    ctx.method = "background"
-    ctx.start_background()
+    if method == "background":
+        ctx.method = "background"
+        ctx.start_background()
+    else:
+        ctx.method = "foreground"
+        ctx.start_foreground()
     ctx.connected = ctx.wait_for_connecting()

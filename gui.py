@@ -611,10 +611,10 @@ class MainWindow(QMainWindow):
         connection, connection_box = self.card()
         connection_box.addWidget(label("CONNECTION METHOD", "eyebrow"))
         connection_box.addWidget(label("Prefer a safe connection path", "section"))
-        connection_box.addWidget(label("Automatic and Background modes target only SCP:SL and never move your cursor or seize your keyboard. Foreground is a separate opt-in mode for compatibility and will take control briefly.", "body"))
+        connection_box.addWidget(label("Automatic uses the verified foreground path for this SCP:SL client and briefly controls the game window, then restores your cursor and previous app. Background-only never moves your cursor but may be ignored by SCP:SL.", "body"))
         self.connection_method_box = QComboBox()
         for title, method in (
-            ("Automatic - direct cold start, background retry (recommended)", "automatic"),
+            ("Automatic - direct cold start, verified GUI retry (recommended)", "automatic"),
             ("Direct - use the supported +connect cold start", "direct"),
             ("Background - target only the SCP:SL window", "background"),
             ("Foreground - compatibility fallback", "foreground"),
