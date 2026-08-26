@@ -337,7 +337,7 @@ def dismiss_connection_overlay(hwnd, input_mode="background"):
 
 def retry_input_mode(cfg):
     """Return the input path used to dismiss a failed connection overlay."""
-    return "foreground" if cfg.get("connection_method", "automatic") in ("automatic", "foreground") else "background"
+    return "foreground" if cfg.get("connection_method", "background") in ("automatic", "foreground") else "background"
 
 
 def wait_for_retry_delay(delay, stop_event=None):
@@ -556,7 +556,7 @@ def run(server_name, on_status=None, stop_event=None):
                     if hwnd is None:
                         notify.notify(APP_NAME, "SCP:SL is running, but its window could not be found for the retry.")
                         return "unclear"
-                dismiss_connection_overlay(hwnd)
+                dismiss_connection_overlay(hwnd, retry_input_mode(cfg))
                 delay = cfg["retry_interval_s"]
                 unit = "second" if delay == 1 else "seconds"
                 status(f"Server rejected/full-or-unknown. Retrying in {delay} {unit}...")

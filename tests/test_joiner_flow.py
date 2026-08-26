@@ -365,6 +365,31 @@ def test_connection_start_failure_is_retried_instead_of_ending_the_run(monkeypat
     assert any("retry" in status.lower() for status in statuses)
 
 
+def test_automatic_retry_dismisses_disconnect_overlay_with_foreground_input(monkeypatch):
+    dismissed = []
+    outcomes = iter(("rejected", "success"))
+    cfg = {
+        "connection_method": "automatic",
+        "navigation_mode": "automatic",
+        "click_points": {},
+        "attempt_timeout_s": 1,
+        "retry_interval_s": 0,
+        "max_unclear": 3,
+        "max_attempts": 2,
+        "max_minutes": 1,
+    }
+    monkeypatch.setattr(joiner.config_mod, "load_config", lambda: cfg)
+    monkeypatch.setattr(joiner.resolver, "resolve", lambda _name: ("Test", "1.2.3.4", 7778))
+    monkeypatch.setattr(joiner.logwatch, "LogWatcher", FakeWatcher)
+    monkeypatch.setattr(joiner.winput, "find_game_window", lambda _title: 123)
+    monkeypatch.setattr(joiner, "dismiss_connection_overlay", lambda _hwnd, mode="background": dismissed.append(mode))
+    monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
+    monkeypatch.setattr(joiner, "connect_once", lambda *_args, **_kwargs: next(outcomes))
+
+    assert joiner.run("Test") == "success"
+    assert dismissed == ["foreground"]
+
+
 def test_zero_attempts_and_runtime_run_until_stopped(monkeypatch):
     attempts = []
     cfg = {
@@ -631,6 +656,7 @@ def test_automatic_warm_retries_use_verified_foreground_navigation(monkeypatch):
         ("text", "1.2.3.4:7778"),
         ("click", 530, 550),
         ("key", joiner.winput.VK_RETURN),
+        ("key", joiner.winput.VK_ESCAPE),
         ("click", 440, 193),
         ("click", 500, 490),
         ("text", "1.2.3.4:7778"),
