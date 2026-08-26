@@ -70,3 +70,13 @@ def connect_with_fallback(ctx) -> None:
     ctx.method = "background"
     ctx.start_background()
     ctx.connected = ctx.wait_for_connecting()
+    if (
+        not ctx.connected
+        and not ctx.stopped()
+        and ctx.config.get("connection_method", "automatic") == "automatic"
+    ):
+        if hasattr(ctx, "recover_foreground"):
+            ctx.recover_foreground()
+        ctx.method = "foreground"
+        ctx.start_foreground()
+        ctx.connected = ctx.wait_for_connecting()

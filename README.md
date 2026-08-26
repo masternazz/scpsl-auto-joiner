@@ -75,7 +75,7 @@ Windows 10 is a supported target; the installer refuses older Windows versions s
 
 SCP:SL writes connection events to `Player.log`. The app watches new log entries and classifies each attempt as connecting, accepted, rejected, cancelled, full, or timed out. This keeps join-state detection independent of monitor resolution.
 
-The app normally sends input to the SCP:SL window so you can use other applications while it waits. Automatic mode is strictly background-only: if a Unity build ignores background input, the app reports and retries instead of moving your cursor or taking keyboard focus. A separate Foreground compatibility option is available only when you explicitly choose it.
+The app normally sends input to the SCP:SL window so you can use other applications while it waits. Automatic mode tries background input first, then uses a brief GUI compatibility fallback if SCP:SL ignores it. The fallback restores your cursor and previous foreground window. Choose Background-only in Settings when the app must never take focus.
 
 ## Local data
 

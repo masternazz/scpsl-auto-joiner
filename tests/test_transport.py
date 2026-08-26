@@ -17,7 +17,7 @@ def test_automatic_method_uses_direct_only_while_the_game_is_cold():
     assert transport.choose_method({"connection_method": "automatic"}, game_running=True) == "background"
 
 
-def test_automatic_warm_connection_stays_background_only_after_background_miss():
+def test_automatic_warm_connection_falls_back_to_reliable_gui_after_background_miss():
     events = []
 
     class Context:
@@ -31,7 +31,37 @@ def test_automatic_warm_connection_stays_background_only_after_background_miss()
             events.append("background")
 
         def start_foreground(self):
-            raise AssertionError("automatic mode must not use foreground input")
+            events.append("foreground")
+
+        def wait_for_connecting(self):
+            events.append("log")
+            return len([event for event in events if event == "log"]) > 1
+
+        def stopped(self):
+            return False
+
+    context = Context()
+
+    assert transport.connect_with_fallback(context) is None
+    assert context.method == "foreground"
+    assert events == ["background", "log", "foreground", "log"]
+
+
+def test_explicit_background_mode_never_falls_back_to_foreground():
+    events = []
+
+    class Context:
+        config = {"connection_method": "background"}
+        game_running = True
+
+        def start_direct(self):
+            events.append("direct")
+
+        def start_background(self):
+            events.append("background")
+
+        def start_foreground(self):
+            raise AssertionError("background-only mode must not use foreground input")
 
         def wait_for_connecting(self):
             events.append("log")
@@ -41,8 +71,7 @@ def test_automatic_warm_connection_stays_background_only_after_background_miss()
             return False
 
     context = Context()
-
-    assert transport.connect_with_fallback(context) is None
+    transport.connect_with_fallback(context)
     assert context.method == "background"
     assert events == ["background", "log"]
 

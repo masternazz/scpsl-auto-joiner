@@ -286,6 +286,10 @@ class _ConnectionAttempt:
         click_layout(self.hwnd, "connect", input_mode="foreground")
         winput.foreground_key_tap(self.hwnd, winput.VK_RETURN)
 
+    def recover_foreground(self):
+        """Dismiss a connection overlay before the GUI compatibility retry."""
+        winput.foreground_key_tap(self.hwnd, winput.VK_ESCAPE)
+
     def wait_for_connecting(self):
         timeout = 90 if self.method == "direct" else 5
         return self.watcher.wait_for_marker(
