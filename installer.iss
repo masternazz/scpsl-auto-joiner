@@ -1,4 +1,5 @@
 #define MyAppName "SCP:SL Auto-Joiner"
+#define MyAppSafeName "SCP-SL Auto-Joiner"
 #define MyAppVersion "0.2.1"
 #define MyAppPublisher "MasterNazz"
 #define MyAppExeName "SCP-SL-Auto-Joiner.exe"
@@ -9,7 +10,7 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={localappdata}\Programs\SCP-SL-Auto-Joiner
-DefaultGroupName={#MyAppName}
+DefaultGroupName={#MyAppSafeName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=dist
@@ -33,8 +34,8 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 Source: "dist\SCP-SL-Auto-Joiner\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\{#MyAppSafeName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\{#MyAppSafeName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall

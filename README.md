@@ -14,9 +14,12 @@ Download the latest Windows build from the [Releases page](https://github.com/ma
 
 The portable ZIP runs from any folder. The setup installer creates a per-user installation and optional shortcuts. Neither package installs SCP: Secret Laboratory, Steam, or any third-party game files.
 
+> **Early release notice:** This is an early Windows build and has not been tested on every SCP:SL server, monitor resolution, DPI setting, or Windows configuration. Please back up your local data, expect bugs, and [report issues on GitHub](https://github.com/masternazz/scpsl-auto-joiner/issues) with your Windows version, display setup, reproduction steps, and the app log.
+
 ## What it does
 
 - Remembers server names and endpoints in a local server list
+- Organizes saved servers into ordered local groups for retrying
 - Detects the endpoint from SCP:SL’s `Player.log` when you join normally
 - Looks up a friendly server name through the server’s normal query response
 - Launches SCP:SL when it is closed
@@ -38,11 +41,11 @@ The app does not use OCR, read game memory, inject into the game, manipulate pac
 
 ## Quick start
 
-1. Start the app.
-2. Open **Remember a server**.
+1. Start the app and review the first-run local checks. They do not launch the game or capture the mouse.
+2. Open **Servers**, then choose **Remember a server**.
 3. Join the target server normally in SCP:SL.
 4. When the app detects the endpoint, give it a friendly name and save it.
-5. Select the saved server and choose **Start auto-join**.
+5. Select the saved server or an ordered group and choose **Start auto-join**.
 
 The app can launch SCP:SL automatically. On the first run, open **Calibration** if automatic controls do not match your game layout. Move the pointer over each named control and capture it without clicking the game. Calibration is stored per computer and should be repeated after changing display scaling, resolution, or the game window layout.
 
@@ -52,12 +55,17 @@ The app checks the public GitHub Releases endpoint in the background at startup.
 
 The app exposes these controls:
 
+- **Connection method**: Automatic direct cold start and background retry is recommended; background and foreground compatibility preferences remain available
 - **Navigation mode**: Use automatic resolution-relative controls or saved calibration
+- **Group looping**: Restart ordered groups after the final server, or stop after one pass
+- **Server refresh timeout**: Set the local A2S_INFO status-refresh timeout
 - **Retry delay**: Seconds between rejected attempts; `2` is the default
 - **Connection timeout**: Maximum time allowed for one attempt
 - **Maximum attempts**: Stop after this many attempts; `0` means unlimited
 - **Maximum runtime**: Stop after this many minutes; `0` means unlimited
+- **Notifications**: Save the Windows-notification preference
 - **Accent color**: Choose violet, cyan, amber, green, or red for the interface
+- **Local storage**: Open, export, or reset local settings, saved servers, groups, and calibration
 
 When both limits are `0`, auto-join continues until the server accepts the connection or you press **Stop**.
 
@@ -125,6 +133,7 @@ The repository also includes the source renderer for the README walkthrough at `
 - [SCP:SL client and server browser research](docs/research/scpsl-client-server-browser.md)
 - [Background automation research](docs/background-automation-research.md)
 - [Security review](docs/security-review.md)
+- [Saved servers and groups](docs/server-groups.md)
 
 ## License
 

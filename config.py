@@ -7,11 +7,16 @@ import os
 from app_paths import app_dir
 
 CONFIG_PATH = os.path.join(app_dir(), "config.json")
-CONFIG_VERSION = 3
+CONFIG_VERSION = 4
 
 DEFAULTS = {
     "config_version": CONFIG_VERSION,
     "navigation_mode": "automatic",
+    "connection_method": "automatic",
+    "group_loop": True,
+    "browser_refresh_timeout_s": 2,
+    "onboarding_complete": False,
+    "notifications_enabled": True,
     # Qt 6 reports cursor positions in DPI-scaled logical pixels. Version 2
     # calibration records native Win32 physical pixels so the coordinates
     # match GetWindowRect/SendInput on 4K displays.

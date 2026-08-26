@@ -30,7 +30,7 @@ def test_load_config_migrates_old_retry_delay_to_two_seconds(tmp_path):
 
     cfg = config_mod.load_config(path)
 
-    assert cfg["config_version"] == 3
+    assert cfg["config_version"] == 4
     assert cfg["retry_interval_s"] == 2
 
 
@@ -44,7 +44,7 @@ def test_version_two_manual_mode_migrates_to_no_input_steam_mode(tmp_path):
 
     cfg = config_mod.load_config(path)
 
-    assert cfg["config_version"] == 3
+    assert cfg["config_version"] == 4
     assert cfg["navigation_mode"] == "automatic"
 
 
@@ -57,6 +57,50 @@ def test_version_three_explicit_fallback_choice_is_preserved(tmp_path):
     }, path)
 
     assert config_mod.load_config(path)["navigation_mode"] == "manual"
+
+
+def test_version_three_config_migrates_task_six_defaults_without_losing_preferences(tmp_path):
+    """A v3 upgrade keeps user choices while adding Task 6's new controls.
+
+    Removing any of the migration assignments should make this test fail: it
+    protects the installed users' updater preference, accent, and calibrated
+    fallback rather than merely checking config source text.
+    """
+    path = str(tmp_path / "config.json")
+    config_mod.save_config({
+        "config_version": 3,
+        "navigation_mode": "manual",
+        "calibration_space": "physical_v2",
+        "retry_interval_s": 9,
+        "attempt_timeout_s": 45,
+        "max_attempts": 0,
+        "max_minutes": 0,
+        "auto_update": True,
+        "accent": "cyan",
+        "click_points": {
+            "servers_tab": [200, 100],
+            "direct_connect": [980, 360],
+            "ip_field": [1180, 1020],
+            "connect_button": [1260, 1160],
+        },
+    }, path)
+
+    cfg = config_mod.load_config(path)
+
+    assert cfg["config_version"] == 4
+    assert cfg["connection_method"] == "automatic"
+    assert cfg["group_loop"] is True
+    assert cfg["browser_refresh_timeout_s"] == 2
+    assert cfg["onboarding_complete"] is False
+    assert cfg["navigation_mode"] == "manual"
+    assert cfg["calibration_space"] == "physical_v2"
+    assert cfg["click_points"]["connect_button"] == [1260, 1160]
+    assert cfg["retry_interval_s"] == 9
+    assert cfg["attempt_timeout_s"] == 45
+    assert cfg["max_attempts"] == 0
+    assert cfg["max_minutes"] == 0
+    assert cfg["auto_update"] is True
+    assert cfg["accent"] == "cyan"
 
 
 def test_calibrated_false_until_all_points_set(tmp_path):

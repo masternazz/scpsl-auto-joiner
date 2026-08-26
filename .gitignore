@@ -22,6 +22,7 @@ assets/generated/auto-join-demo-hq.gif
 # Playwright/E2E scratch data
 .e2e-*/
 graphify-out/
+.worktrees/
 
 # PyInstaller and packaged release output
 build/

@@ -3,12 +3,13 @@
 the design spec). servers.json is populated by the "remember a server" flow
 in gui.py, not hand-edited."""
 import difflib
-import json
 import os
 import re
 import socket
+import time
 
 from app_paths import app_dir
+import server_store
 
 A2S_INFO_QUERY = b"\xff\xff\xff\xffTSource Engine Query\x00"
 RICH_TEXT_TAG_RE = re.compile(r"<[^>]{1,100}>")
@@ -16,35 +17,73 @@ RICH_TEXT_TAG_RE = re.compile(r"<[^>]{1,100}>")
 SERVERS_PATH = os.path.join(app_dir(), "servers.json")
 
 
+def server_mapping(data):
+    """Return legacy picker data from either supported local store shape.
+
+    GUI callers historically consumed ``{display_name: {ip, port}}``. The
+    versioned store deliberately has ``version``, ``servers``, and ``groups``
+    keys, so this adapter keeps those storage keys out of picker widgets while
+    continuing to accept old flat files.
+    """
+    if not isinstance(data, dict):
+        return {}
+    records = data.get("servers") if isinstance(data.get("servers"), list) else None
+    if records is not None:
+        return {
+            item["name"]: {"ip": item["ip"], "port": item["port"]}
+            for item in records
+            if isinstance(item, dict) and all(key in item for key in ("name", "ip", "port"))
+        }
+    return {
+        name: {"ip": entry["ip"], "port": entry["port"]}
+        for name, entry in data.items()
+        if isinstance(name, str) and isinstance(entry, dict) and "ip" in entry and "port" in entry
+    }
+
+
 def load_servers(path=None):
     path = path or SERVERS_PATH
     if not os.path.exists(path):
         return {}
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+    return server_mapping(server_store.load_store(path))
+
+
+def load_store(path=None):
+    return server_store.load_store(path or SERVERS_PATH)
 
 
 def save_servers(servers, path=None):
     path = path or SERVERS_PATH
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(servers, f, indent=2)
+    server_store.save_store(servers, path)
 
 
 def remember_server(name, ip, port, path=None):
-    path = path or SERVERS_PATH
-    servers = load_servers(path)
-    servers[name] = {"ip": ip, "port": int(port)}
-    save_servers(servers, path)
+    server_store.upsert_server(name, ip, port, path or SERVERS_PATH)
 
 
 def forget_server(name, path=None):
     path = path or SERVERS_PATH
-    servers = load_servers(path)
-    if name not in servers:
+    store = server_store.load_store(path)
+    server = next((item for item in store["servers"] if item["name"] == name), None)
+    if server is None:
         return False
-    del servers[name]
-    save_servers(servers, path)
-    return True
+    return server_store.delete_server(server["id"], path)
+
+
+def update_server(server_id, name, ip, port, path=None):
+    return server_store.update_server(server_id, name, ip, port, path or SERVERS_PATH)
+
+
+def create_group(name, server_ids, path=None):
+    return server_store.create_group(name, server_ids, path or SERVERS_PATH)
+
+
+def update_group(group_id, name, server_ids, path=None):
+    return server_store.update_group(group_id, server_ids, path or SERVERS_PATH, name=name)
+
+
+def delete_group(group_id, path=None):
+    return server_store.delete_group(group_id, path or SERVERS_PATH)
 
 
 def _parse_a2s_info(packet):
@@ -72,6 +111,63 @@ def query_server_name(ip, port, timeout=1.5):
         return None
     finally:
         sock.close()
+
+
+def _parse_a2s_info_details(packet):
+    if len(packet) < 6 or packet[:5] != b"\xff\xff\xff\xffI":
+        return None
+    offset = 6
+    fields = []
+    for _ in range(4):
+        end = packet.find(b"\x00", offset)
+        if end < 0:
+            return None
+        fields.append(packet[offset:end].decode("utf-8", errors="replace"))
+        offset = end + 1
+    if len(packet) < offset + 9:
+        return None
+    server_id = int.from_bytes(packet[offset:offset + 2], "little")
+    players, max_players, bots = packet[offset + 2:offset + 5]
+    server_type, environment, visibility, vac = packet[offset + 5:offset + 9]
+    offset += 9
+    result = {"name": " ".join(RICH_TEXT_TAG_RE.sub("", fields[0]).split()), "map": fields[1],
+              "folder": fields[2], "game": fields[3], "id": server_id, "players": players,
+              "max_players": max_players, "bots": bots, "server_type": chr(server_type),
+              "environment": chr(environment), "password": bool(visibility), "vac": bool(vac)}
+    if len(packet) > offset:
+        edf = packet[offset]
+        offset += 1
+        result["edf"] = edf
+        if edf & 0x80 and len(packet) >= offset + 2:
+            result["port"] = int.from_bytes(packet[offset:offset + 2], "little")
+    return result
+
+
+def query_server(ip, port, timeout=1.5, path=None):
+    try:
+        address = (str(ip), int(port))
+        saved = server_store.load_store(path or SERVERS_PATH)["servers"]
+        if not any(server["ip"] == address[0] and server["port"] == address[1] for server in saved):
+            return None
+        started = time.perf_counter()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(timeout)
+        sock.sendto(A2S_INFO_QUERY, address)
+        packet, _ = sock.recvfrom(4096)
+        if packet[:5] == b"\xff\xff\xff\xffA" and len(packet) >= 9:
+            sock.sendto(A2S_INFO_QUERY + packet[5:9], address)
+            packet, _ = sock.recvfrom(4096)
+        result = _parse_a2s_info_details(packet)
+        if result is None:
+            return None
+        result["latency_ms"] = round((time.perf_counter() - started) * 1000, 2)
+        result["available"] = True
+        return result
+    except (OSError, ValueError):
+        return None
+    finally:
+        if "sock" in locals():
+            sock.close()
 
 
 def resolve(query, path=None):
