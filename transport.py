@@ -27,7 +27,7 @@ def launch_direct(executable, ip, port) -> subprocess.Popen:
 
 
 def choose_method(config, game_running) -> ConnectionMethod:
-    """Choose a method without ever direct-launching an existing client."""
+    """Choose a method without launching Steam's connection dialog."""
     if not game_running:
         return "direct"
     # Old test/config dictionaries may omit the new setting. The persisted
@@ -38,7 +38,9 @@ def choose_method(config, game_running) -> ConnectionMethod:
         return "foreground"
     if preferred == "background":
         return "background"
-    return "steam"
+    # ``steam://connect`` opens Steam's Game Info dialog for full/rejected
+    # servers. Automatic retries must stay inside SCP:SL's existing window.
+    return "background"
 
 
 def connect_with_fallback(ctx) -> None:
@@ -60,12 +62,6 @@ def connect_with_fallback(ctx) -> None:
         ctx.start_foreground()
         ctx.connected = ctx.wait_for_connecting()
         return
-
-    if method == "steam":
-        ctx.start_steam()
-        ctx.connected = ctx.wait_for_connecting()
-        if ctx.connected or ctx.stopped():
-            return
 
     # Automatic/background modes never synthesize global input.
     ctx.method = "background"
