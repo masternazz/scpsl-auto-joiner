@@ -17,7 +17,7 @@ def test_automatic_method_uses_direct_only_while_the_game_is_cold():
     assert transport.choose_method({"connection_method": "automatic"}, game_running=True) == "background"
 
 
-def test_automatic_warm_connection_uses_background_without_foreground_input():
+def test_automatic_warm_connection_falls_back_to_reliable_gui_after_background_miss():
     events = []
 
     class Context:
@@ -31,11 +31,11 @@ def test_automatic_warm_connection_uses_background_without_foreground_input():
             events.append("background")
 
         def start_foreground(self):
-            raise AssertionError("automatic mode must not use foreground input")
+            events.append("foreground")
 
         def wait_for_connecting(self):
             events.append("log")
-            return True
+            return len([event for event in events if event == "log"]) > 1
 
         def stopped(self):
             return False
@@ -43,8 +43,8 @@ def test_automatic_warm_connection_uses_background_without_foreground_input():
     context = Context()
 
     assert transport.connect_with_fallback(context) is None
-    assert context.method == "background"
-    assert events == ["background", "log"]
+    assert context.method == "foreground"
+    assert events == ["background", "log", "foreground", "log"]
 
 
 def test_build_steam_connect_uri_uses_the_supported_warm_connection_path():
