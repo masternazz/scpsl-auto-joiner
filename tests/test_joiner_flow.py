@@ -332,6 +332,39 @@ def test_disconnected_outcome_retries_without_claiming_server_is_full(monkeypatc
     assert "Server rejected/full-or-unknown. Retrying in 0 seconds..." in statuses
 
 
+def test_connection_start_failure_is_retried_instead_of_ending_the_run(monkeypatch):
+    attempts = []
+    statuses = []
+    cfg = {
+        "connection_method": "automatic",
+        "navigation_mode": "automatic",
+        "click_points": {},
+        "attempt_timeout_s": 1,
+        "retry_interval_s": 0,
+        "max_unclear": 3,
+        "max_attempts": 2,
+        "max_minutes": 1,
+    }
+    monkeypatch.setattr(joiner.config_mod, "load_config", lambda: cfg)
+    monkeypatch.setattr(joiner.resolver, "resolve", lambda _name: ("Test", "1.2.3.4", 7778))
+    monkeypatch.setattr(joiner.logwatch, "LogWatcher", FakeWatcher)
+    monkeypatch.setattr(joiner.winput, "find_game_window", lambda _title: 123)
+    monkeypatch.setattr(joiner.winput, "post_key_tap", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
+
+    def attempt(*_args, **_kwargs):
+        attempts.append(len(attempts) + 1)
+        if len(attempts) == 1:
+            raise joiner.JoinError("background click was not observed")
+        return "success"
+
+    monkeypatch.setattr(joiner, "connect_once", attempt)
+
+    assert joiner.run("Test", on_status=statuses.append) == "success"
+    assert attempts == [1, 2]
+    assert any("retry" in status.lower() for status in statuses)
+
+
 def test_zero_attempts_and_runtime_run_until_stopped(monkeypatch):
     attempts = []
     cfg = {
