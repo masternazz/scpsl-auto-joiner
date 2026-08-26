@@ -14,6 +14,11 @@ def test_unrelated_unity_window_does_not_match():
     assert not winput._is_game_window("Another Game", "UnityWndClass", "SCP: Secret Laboratory")
 
 
+def test_client_point_scales_with_current_client_rectangle():
+    import joiner
+    assert joiner.client_point((100, 200, 1100, 800), (100, 100), (500, 400)) == (300, 350)
+
+
 def test_replace_text_clears_retained_endpoint_before_typing(monkeypatch):
     events = []
     monkeypatch.setattr(winput, "post_hotkey", lambda hwnd, modifier, key: events.append(("hotkey", hwnd, modifier, key)))

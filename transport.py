@@ -63,15 +63,10 @@ def connect_with_fallback(ctx) -> None:
         ctx.connected = ctx.wait_for_connecting()
         return
 
-    # Try the focus-preserving path first. Unity's newer Input System can
-    # ignore window messages, though; in that case a missed log marker means
-    # the game did not receive the action, so use the reliable GUI path for
-    # this attempt. The foreground helper restores the user's cursor and
-    # foreground window after each action.
+    # Automatic mode is deliberately background-only. Unity can ignore window
+    # messages, but silently switching to SendInput would move the user's
+    # cursor, steal focus, and type into the wrong application. The caller
+    # reports the missing marker and applies its normal retry policy instead.
     ctx.method = "background"
     ctx.start_background()
     ctx.connected = ctx.wait_for_connecting()
-    if not ctx.connected and not ctx.stopped():
-        ctx.method = "foreground"
-        ctx.start_foreground()
-        ctx.connected = ctx.wait_for_connecting()

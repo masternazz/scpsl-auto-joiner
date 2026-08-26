@@ -38,6 +38,20 @@ LAYOUT_POINTS = {
 }
 
 
+def client_point(client_rect, local_point, saved_size):
+    """Map a captured client-local point onto the current client rectangle."""
+    left, top, right, bottom = client_rect
+    saved_width, saved_height = saved_size
+    if saved_width <= 0 or saved_height <= 0:
+        raise JoinError("Saved calibration has no valid client size.")
+    x, y = local_point
+    width, height = right - left, bottom - top
+    return (
+        int(left + x * width / saved_width),
+        int(top + y * height / saved_height),
+    )
+
+
 class JoinError(Exception):
     """Setup failure the caller should show and stop on."""
 
@@ -181,7 +195,7 @@ def ensure_game_running(watcher, launch_timeout=90, stop_event=None):
 
 
 def layout_point(hwnd, name):
-    rect = winput.get_window_rect(hwnd)
+    rect = winput.get_client_rect(hwnd) or winput.get_window_rect(hwnd)
     if not rect:
         raise JoinError("Could not read the SCP:SL window size.")
     left, top, right, bottom = rect
@@ -198,7 +212,14 @@ def click_layout(hwnd, name, input_mode="background"):
         "connect": "connect_button",
     }
     if cfg.get("navigation_mode") == "manual" and config_mod.calibrated(cfg) and name in manual_names:
-        point = tuple(cfg["click_points"][manual_names[name]])
+        point_name = manual_names[name]
+        client_points = cfg.get("client_click_points", {})
+        saved_size = cfg.get("calibration_client_size", [0, 0])
+        client_rect = winput.get_client_rect(hwnd)
+        if point_name in client_points and client_rect and saved_size != [0, 0]:
+            point = client_point(client_rect, client_points[point_name], saved_size)
+        else:
+            point = tuple(cfg["click_points"][point_name])
     else:
         point = layout_point(hwnd, name)
     if input_mode == "foreground":
@@ -292,7 +313,10 @@ def connect_once(hwnd, cfg, watcher, ip, port, open_servers=True,
     if not attempt.connected:
         if attempt.method == "direct":
             raise JoinError("SCP:SL launched but did not start the direct connection.")
-        raise JoinError("SCP:SL did not start connecting. Check the game window and calibration.")
+        raise JoinError(
+            "SCP:SL ignored the background input. Automatic mode will not take control of your mouse; "
+            "check the game window or choose Foreground mode explicitly."
+        )
     return watcher.wait_for_outcome(cfg["attempt_timeout_s"], stop_event=stop_event)
 
 

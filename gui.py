@@ -176,6 +176,14 @@ class CalibrationDialog(QDialog):
             return
         name, _ = self.steps[self.index]
         self.cfg["click_points"][name] = [int(point[0]), int(point[1])]
+        hwnd = winput.find_game_window(joiner.GAME_TITLE)
+        client_rect = winput.get_client_rect(hwnd) if hwnd else None
+        if client_rect:
+            left, top, right, bottom = client_rect
+            self.cfg.setdefault("client_click_points", {})[name] = [
+                int(point[0] - left), int(point[1] - top),
+            ]
+            self.cfg["calibration_client_size"] = [right - left, bottom - top]
         self.index += 1
         self.progress.setValue(self.index)
         if self.index < len(self.steps):
@@ -598,7 +606,7 @@ class MainWindow(QMainWindow):
         connection, connection_box = self.card()
         connection_box.addWidget(label("CONNECTION METHOD", "eyebrow"))
         connection_box.addWidget(label("Prefer a safe connection path", "section"))
-        connection_box.addWidget(label("Automatic keeps the supported direct cold start and background retry fallback. Foreground is available only for Unity builds that ignore background input.", "body"))
+        connection_box.addWidget(label("Automatic uses direct cold start and background-only retries. It never moves your cursor or takes keyboard focus. Foreground input is opt-in for Unity builds that ignore background input.", "body"))
         self.connection_method_box = QComboBox()
         for title, method in (
             ("Automatic - direct cold start, background retry (recommended)", "automatic"),
@@ -789,11 +797,11 @@ class MainWindow(QMainWindow):
         checks = self._readiness_checks()
         method = cfg.get("connection_method", "automatic")
         method_text = {
-            "automatic": "Automatic (direct cold start, then background fallback)",
+            "automatic": "Automatic (direct cold start, background-only warm retries)",
             "direct": "Direct (supported +connect cold start)",
             "background": "Background (targeted SCP:SL window messages)",
             "foreground": "Foreground (compatibility fallback)",
-        }.get(method, "Automatic (direct cold start, then background fallback)")
+        }.get(method, "Automatic (direct cold start, background-only warm retries)")
         game_text = "detected" if checks["executable"] else "not detected"
         log_text = "writable" if checks["log_writable"] else ("found but not writable" if checks["log_exists"] else "not found yet")
         if cfg.get("navigation_mode") == "manual" and config_mod.calibrated(cfg):
