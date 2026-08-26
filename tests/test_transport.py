@@ -14,10 +14,10 @@ def test_build_direct_args_uses_the_exact_supported_connect_arguments():
 
 def test_automatic_method_uses_direct_only_while_the_game_is_cold():
     assert transport.choose_method({"connection_method": "automatic"}, game_running=False) == "direct"
-    assert transport.choose_method({"connection_method": "automatic"}, game_running=True) == "steam"
+    assert transport.choose_method({"connection_method": "automatic"}, game_running=True) == "background"
 
 
-def test_automatic_warm_connection_uses_steam_then_background_without_foreground_input():
+def test_automatic_warm_connection_uses_background_without_foreground_input():
     events = []
 
     class Context:
@@ -27,9 +27,6 @@ def test_automatic_warm_connection_uses_steam_then_background_without_foreground
         def start_direct(self):
             events.append("direct")
 
-        def start_steam(self):
-            events.append("steam")
-
         def start_background(self):
             events.append("background")
 
@@ -38,7 +35,7 @@ def test_automatic_warm_connection_uses_steam_then_background_without_foreground
 
         def wait_for_connecting(self):
             events.append("log")
-            return len([event for event in events if event == "log"]) == 2
+            return True
 
         def stopped(self):
             return False
@@ -47,7 +44,7 @@ def test_automatic_warm_connection_uses_steam_then_background_without_foreground
 
     assert transport.connect_with_fallback(context) is None
     assert context.method == "background"
-    assert events == ["steam", "log", "background", "log"]
+    assert events == ["background", "log"]
 
 
 def test_build_steam_connect_uri_uses_the_supported_warm_connection_path():

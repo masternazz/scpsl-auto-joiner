@@ -558,7 +558,7 @@ def test_automatic_direct_connect_ratio_targets_direct_connect_not_the_left_rent
     assert joiner.layout_point(123, "direct_connect") != rent_area_point
 
 
-def test_automatic_warm_retries_use_steam_then_focus_preserving_background_navigation(monkeypatch):
+def test_automatic_warm_retries_use_background_navigation_without_steam_dialog(monkeypatch):
     events = []
     cfg = {
         "connection_method": "automatic",
@@ -571,22 +571,19 @@ def test_automatic_warm_retries_use_steam_then_focus_preserving_background_navig
         "max_minutes": 5,
     }
 
-    class SteamThenBackgroundWatcher(FakeWatcher):
+    class BackgroundWatcher(FakeWatcher):
         def __init__(self):
             self.outcomes = iter(("rejected_or_unknown", "success"))
-            self.connecting_checks = 0
 
         def wait_for_marker(self, marker, _timeout, stop_event=None):
             assert marker == joiner.logwatch.CONNECTING_MARK
-            self.connecting_checks += 1
-            return self.connecting_checks % 2 == 0
+            return True
 
     monkeypatch.setattr(joiner.config_mod, "load_config", lambda: cfg)
     monkeypatch.setattr(joiner.resolver, "resolve", lambda _name: ("Canada #2", "1.2.3.4", 7778))
-    monkeypatch.setattr(joiner.logwatch, "LogWatcher", SteamThenBackgroundWatcher)
+    monkeypatch.setattr(joiner.logwatch, "LogWatcher", BackgroundWatcher)
     monkeypatch.setattr(joiner.winput, "find_game_window", lambda _title: 123)
     monkeypatch.setattr(joiner.winput, "get_window_rect", lambda _hwnd: (0, 0, 1000, 1000))
-    monkeypatch.setattr(joiner.transport, "launch_steam_connect", lambda ip, port: events.append(("steam", ip, port)))
     monkeypatch.setattr(joiner.winput, "post_click", lambda _hwnd, x, y: events.append(("click", x, y)))
     monkeypatch.setattr(joiner.winput, "replace_text", lambda _hwnd, text: events.append(("text", text)))
     monkeypatch.setattr(joiner.winput, "post_key_tap", lambda _hwnd, key: events.append(("key", key)))
@@ -598,7 +595,6 @@ def test_automatic_warm_retries_use_steam_then_focus_preserving_background_navig
 
     assert joiner.run("Canada #2") == "success"
     assert events == [
-        ("steam", "1.2.3.4", 7778),
         ("click", 120, 50),
         ("click", 525, 193),
         ("click", 500, 490),
@@ -606,7 +602,6 @@ def test_automatic_warm_retries_use_steam_then_focus_preserving_background_navig
         ("click", 530, 550),
         ("key", joiner.winput.VK_RETURN),
         ("key", joiner.winput.VK_ESCAPE),
-        ("steam", "1.2.3.4", 7778),
         ("click", 525, 193),
         ("click", 500, 490),
         ("text", "1.2.3.4:7778"),
