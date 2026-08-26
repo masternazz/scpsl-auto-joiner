@@ -497,8 +497,11 @@ def run(server_name, on_status=None, stop_event=None):
                     stop_event=stop_event,
                 )
             except JoinError as e:
-                notify.notify(APP_NAME, str(e))
-                return "unclear"
+                # A background Unity interaction can be missed without the
+                # game being broken. Treat it as a transient attempt failure
+                # so the configured retry policy gets a chance to recover.
+                outcome = "unclear"
+                status(f"Could not confirm the connection start ({e}). Retrying...")
 
             if outcome == "success":
                 notify.notify(APP_NAME, f"Joined {name}!")

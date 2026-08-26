@@ -15,7 +15,7 @@ from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QCompleter, QDialog, QDialogButtonBox, QFrame, QGridLayout,
     QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
-    QProgressBar, QScrollArea, QSizePolicy, QSpacerItem, QStackedWidget,
+    QProgressBar, QScrollArea, QSizePolicy, QSpacerItem, QStackedWidget, QTabWidget,
     QCheckBox, QListWidget, QListWidgetItem, QSpinBox, QTextEdit, QVBoxLayout, QWidget,
 )
 
@@ -463,8 +463,6 @@ class MainWindow(QMainWindow):
         self.endpoint_preview = label("No saved server selected.", "helper")
         self.endpoint_preview.setProperty("role", "endpoint")
         box.addWidget(self.endpoint_preview)
-        layout.addWidget(destination)
-
         editor, box = self.card()
         box.addWidget(label("EDIT SELECTED SERVER", "eyebrow"))
         box.addWidget(label("Change the name or endpoint", "section"))
@@ -505,7 +503,18 @@ class MainWindow(QMainWindow):
         secondary_actions.addWidget(self.remember_button); secondary_actions.addWidget(self.delete_server_button); secondary_actions.addWidget(self.stop_button); secondary_actions.addStretch()
         box.addLayout(secondary_actions)
         box.addWidget(label("Remember a server watches your next normal connection, detects its IP and port, then asks you to give it a friendly name.", "helper"))
-        layout.addWidget(editor)
+        workspace_tabs = QTabWidget()
+        workspace_tabs.setObjectName("serverWorkspaceTabs")
+        workspace_tabs.setDocumentMode(True)
+        saved_tab = QWidget()
+        saved_layout = QVBoxLayout(saved_tab)
+        saved_layout.setContentsMargins(0, 10, 0, 0)
+        saved_layout.setSpacing(14)
+        saved_layout.addWidget(destination)
+        saved_layout.addWidget(editor)
+        saved_layout.addStretch()
+        workspace_tabs.addTab(saved_tab, "Saved servers")
+
         groups, group_box = self.card()
         group_box.addWidget(label("ORDERED GROUPS", "eyebrow"))
         group_box.addWidget(label("Start servers in a preferred order", "section"))
@@ -547,7 +556,13 @@ class MainWindow(QMainWindow):
         self.start_group_button.clicked.connect(self.start_selected_group)
         group_actions.addWidget(self.save_group_button); group_actions.addWidget(self.delete_group_button); group_actions.addWidget(self.start_group_button); group_actions.addStretch()
         group_box.addLayout(group_actions)
-        layout.addWidget(groups)
+        groups_tab = QWidget()
+        groups_layout = QVBoxLayout(groups_tab)
+        groups_layout.setContentsMargins(0, 10, 0, 0)
+        groups_layout.addWidget(groups)
+        groups_layout.addStretch()
+        workspace_tabs.addTab(groups_tab, "Server groups")
+        layout.addWidget(workspace_tabs)
         layout.addStretch()
         return self.scroll_page(content)
 
