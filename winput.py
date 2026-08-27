@@ -22,6 +22,7 @@ _WM_CHAR = 0x0102
 _WM_MOUSEMOVE = 0x0200
 _WM_LBUTTONDOWN = 0x0201
 _WM_LBUTTONUP = 0x0202
+_WM_ACTIVATEAPP = 0x001C
 _MK_LBUTTON = 0x0001
 _CLICK_MOVE_DWELL = 0.15  # let a hover-highlight settle before the click lands
 
@@ -330,6 +331,7 @@ def post_click(hwnd, screen_x: int, screen_y: int, post_wait: float = 0.5):
         return
     try:
         u32 = ctypes.windll.user32
+        post_window_active(hwnd)
 
         class _PT(ctypes.Structure):
             _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
@@ -367,6 +369,7 @@ def post_key_tap(hwnd, vk: int, post_wait: float = 0.1):
     if not hwnd:
         return
     try:
+        post_window_active(hwnd)
         _post_key(hwnd, vk, key_up=False)
         time.sleep(0.05)
         _post_key(hwnd, vk, key_up=True)
@@ -381,6 +384,7 @@ def post_hotkey(hwnd, modifier: int, vk: int, post_wait: float = 0.1):
     if not hwnd:
         return
     try:
+        post_window_active(hwnd)
         _post_key(hwnd, modifier, key_up=False)
         _post_key(hwnd, vk, key_up=False)
         _post_key(hwnd, vk, key_up=True)
@@ -404,9 +408,25 @@ def post_text(hwnd, text: str, post_wait: float = 0.02):
     if not hwnd:
         return
     u32 = ctypes.windll.user32
+    post_window_active(hwnd)
     for ch in text:
         u32.PostMessageW(hwnd, _WM_CHAR, ord(ch), 0)
         time.sleep(post_wait)
+
+
+def post_window_active(hwnd):
+    """Tell a background target it is active without changing Windows focus.
+
+    This mirrors the background-safe activation hint used by Full Auto Forza.
+    It is only a window message: it never moves the cursor or calls a focus
+    API, and SCP:SL remains free to ignore it.
+    """
+    if not hwnd:
+        return False
+    try:
+        return bool(ctypes.windll.user32.PostMessageW(hwnd, _WM_ACTIVATEAPP, 1, 0))
+    except Exception:
+        return False
 
 
 if __name__ == "__main__":

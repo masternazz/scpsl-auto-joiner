@@ -382,7 +382,7 @@ def connect_once(hwnd, cfg, watcher, ip, port, open_servers=True,
         if attempt.method == "foreground":
             raise JoinError("SCP:SL did not start the foreground connection; check the game window and controls.")
         raise JoinError(
-            "SCP:SL ignored background input. Choose Automatic or Foreground for this client, or keep Background-only for no-input mode."
+            "SCP:SL ignored background GUI input. Automatic mode will not take control of your mouse; choose Foreground explicitly for this client or report the SCP:SL version."
         )
     attempt.status(f"UI phase: {UIPhase.connecting.value}")
     outcome = watcher.wait_for_outcome(cfg["attempt_timeout_s"], stop_event=stop_event)
@@ -407,7 +407,7 @@ def dismiss_connection_overlay(hwnd, input_mode="background"):
 
 def retry_input_mode(cfg):
     """Return the input path used to dismiss a failed connection overlay."""
-    return "foreground" if cfg.get("connection_method", "background") in ("automatic", "foreground") else "background"
+    return "foreground" if cfg.get("connection_method", "background") == "foreground" else "background"
 
 
 def wait_for_retry_delay(delay, stop_event=None):
