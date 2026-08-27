@@ -69,6 +69,17 @@ class JoinState(str, Enum):
     failed = "failed"
 
 
+class UIPhase(str, Enum):
+    """Observable SCP:SL menu phase used by the retry state machine."""
+    servers_page = "servers_page"
+    direct_connect_open = "direct_connect_open"
+    connecting = "connecting"
+    disconnected = "disconnected"
+    retry_ready = "retry_ready"
+    joined = "joined"
+    unknown = "unknown"
+
+
 @dataclass(frozen=True)
 class GroupProgress:
     group_id: str
@@ -203,6 +214,11 @@ def layout_point(hwnd, name):
     return int(left + (right - left) * x_ratio), int(top + (bottom - top) * y_ratio)
 
 
+def calculated_click_points(hwnd):
+    """Return the exact native screen targets currently used by automation."""
+    return {name: layout_point(hwnd, name) for name in LAYOUT_POINTS}
+
+
 def click_layout(hwnd, name, input_mode="background"):
     cfg = config_mod.load_config()
     manual_names = {
@@ -242,8 +258,15 @@ def navigate_to_direct_connect(hwnd, open_servers=True, input_mode="background")
     time.sleep(0.8)
 
 
-def prepare_direct_connect(hwnd, ip, port, open_servers=True, input_mode="background"):
-    navigate_to_direct_connect(hwnd, open_servers=open_servers, input_mode=input_mode)
+def prepare_direct_connect(hwnd, ip, port, open_servers=True, input_mode="background", open_dialog=True):
+    """Fill Direct Connect.
+
+    ``open_dialog=False`` is deliberately a separate path: after a rejected
+    connection SCP:SL commonly leaves Direct Connect available. Retrying from
+    that dialog must not click any Servers-page coordinate underneath it.
+    """
+    if open_dialog:
+        navigate_to_direct_connect(hwnd, open_servers=open_servers, input_mode=input_mode)
     click_layout(hwnd, "address_field", input_mode=input_mode)
     address = f"{ip}:{port}"
     if input_mode == "foreground":
@@ -255,7 +278,8 @@ def prepare_direct_connect(hwnd, ip, port, open_servers=True, input_mode="backgr
 class _ConnectionAttempt:
     """Adapts one join attempt's UI and log operations for ``transport``."""
 
-    def __init__(self, hwnd, cfg, watcher, ip, port, open_servers, launch_direct, stop_event):
+    def __init__(self, hwnd, cfg, watcher, ip, port, open_servers, launch_direct, stop_event,
+                 reuse_dialog=False, on_status=None):
         self.hwnd = hwnd
         self.config = cfg
         self.watcher = watcher
@@ -264,8 +288,14 @@ class _ConnectionAttempt:
         self.open_servers = open_servers
         self.game_running = not launch_direct
         self.stop_event = stop_event
+        self.reuse_dialog = reuse_dialog
+        self.on_status = on_status
         self.method = None
         self.connected = False
+
+    def status(self, message):
+        if self.on_status:
+            self.on_status(message)
 
     def start_direct(self):
         launch_game_connected(self.ip, self.port)
@@ -274,7 +304,10 @@ class _ConnectionAttempt:
         transport.launch_steam_connect(self.ip, self.port)
 
     def start_background(self):
-        prepare_direct_connect(self.hwnd, self.ip, self.port, open_servers=self.open_servers)
+        prepare_direct_connect(
+            self.hwnd, self.ip, self.port,
+            open_servers=self.open_servers, open_dialog=not self.reuse_dialog,
+        )
         click_layout(self.hwnd, "connect")
         winput.post_key_tap(self.hwnd, winput.VK_RETURN)
 
@@ -282,13 +315,27 @@ class _ConnectionAttempt:
         prepare_direct_connect(
             self.hwnd, self.ip, self.port,
             open_servers=self.open_servers, input_mode="foreground",
+            open_dialog=not self.reuse_dialog,
         )
         click_layout(self.hwnd, "connect", input_mode="foreground")
         winput.foreground_key_tap(self.hwnd, winput.VK_RETURN)
 
     def recover_foreground(self):
-        """Dismiss a connection overlay before the GUI compatibility retry."""
-        winput.foreground_key_tap(self.hwnd, winput.VK_ESCAPE)
+        """Dismiss the failure overlay before reopening Direct Connect."""
+        if self.method == "foreground":
+            winput.foreground_key_tap(self.hwnd, winput.VK_ESCAPE)
+        else:
+            winput.post_key_tap(self.hwnd, winput.VK_ESCAPE)
+
+    def reopen_direct_connect(self):
+        """Safely reopen Direct Connect without touching the Servers tab."""
+        self.status("Reopening Direct Connect after dialog recovery.")
+        self.reuse_dialog = False
+        self.recover_foreground()
+        if self.method == "foreground":
+            self.start_foreground()
+        else:
+            self.start_background()
 
     def wait_for_connecting(self):
         timeout = 90 if self.method == "direct" else 5
@@ -301,19 +348,34 @@ class _ConnectionAttempt:
 
 
 def connect_once(hwnd, cfg, watcher, ip, port, open_servers=True,
-                 launch_direct=False, stop_event=None):
+                 launch_direct=False, stop_event=None, reuse_dialog=False,
+                 on_status=None):
     """Start one connection without global input, then read its result.
 
-    A cold automatic start uses the game's supported ``+connect`` argument.
-    Warm starts and retries post controls only to SCP:SL's window. Manual mode
-    uses calibrated positions; automatic mode uses resolution-relative ones.
+    Automatic starts use the recorded menu flow. The explicit Direct setting
+    uses the game's supported ``+connect`` argument. Warm starts and retries
+    target only SCP:SL's window; manual mode uses calibrated positions and
+    automatic mode uses resolution-relative ones.
     """
     attempt = _ConnectionAttempt(
         hwnd, cfg, watcher, ip, port, open_servers, launch_direct, stop_event,
+        reuse_dialog=reuse_dialog, on_status=on_status,
     )
+    if reuse_dialog:
+        attempt.status("Reusing Direct Connect dialog.")
+        attempt.status(f"UI phase: {UIPhase.retry_ready.value}")
+        dismiss_connection_overlay(hwnd, retry_input_mode(cfg))
     transport.connect_with_fallback(attempt)
     if attempt.stopped():
         return "stopped"
+    if not attempt.connected and reuse_dialog:
+        # ``transport`` has already tested the existing dialog. A missing
+        # Connecting marker means the overlay consumed the action or the
+        # dialog was closed, so recover once and reopen Direct Connect.
+        attempt.status(f"UI phase: {UIPhase.unknown.value}")
+        attempt.reopen_direct_connect()
+        attempt.connected = attempt.wait_for_connecting()
+
     if not attempt.connected:
         if attempt.method == "direct":
             raise JoinError("SCP:SL launched but did not start the direct connection.")
@@ -322,7 +384,15 @@ def connect_once(hwnd, cfg, watcher, ip, port, open_servers=True,
         raise JoinError(
             "SCP:SL ignored background input. Choose Automatic or Foreground for this client, or keep Background-only for no-input mode."
         )
-    return watcher.wait_for_outcome(cfg["attempt_timeout_s"], stop_event=stop_event)
+    attempt.status(f"UI phase: {UIPhase.connecting.value}")
+    outcome = watcher.wait_for_outcome(cfg["attempt_timeout_s"], stop_event=stop_event)
+    if outcome == "success":
+        attempt.status(f"UI phase: {UIPhase.joined.value}")
+    elif outcome in ("disconnected", "rejected_or_unknown"):
+        attempt.status(f"UI phase: {UIPhase.disconnected.value}")
+    elif outcome != "stopped":
+        attempt.status(f"UI phase: {UIPhase.unknown.value}")
+    return outcome
 
 
 def dismiss_connection_overlay(hwnd, input_mode="background"):
@@ -376,7 +446,10 @@ def run_group(group_id, on_status=None, stop_event=None):
         cfg = config_mod.load_config()
         watcher = logwatch.LogWatcher()
         hwnd = winput.find_game_window(GAME_TITLE)
-        cold_direct = transport.choose_method(cfg, game_running=bool(hwnd)) == "direct"
+        # Automatic mode follows the recorded client flow even on a cold
+        # start: launch the game to its menu, then use Servers → Direct
+        # Connect. The explicit Direct setting is the only +connect path.
+        cold_direct = cfg.get("connection_method") == "direct" and not hwnd
         if cold_direct:
             status(f"Launching SCP:SL for group '{group['name']}'...")
         else:
@@ -395,6 +468,7 @@ def run_group(group_id, on_status=None, stop_event=None):
         deadline = None if max_minutes == 0 else time.monotonic() + max_minutes * 60
         index = 0
         unclear = [0] * len(servers)
+        dialog_open = False
         while (
             (max_attempts == 0 or attempts < max_attempts)
             and (deadline is None or time.monotonic() < deadline)
@@ -407,15 +481,26 @@ def run_group(group_id, on_status=None, stop_event=None):
             attempts += 1
             progress = GroupProgress(group_id, server["id"], index, len(servers), attempts, "connecting...")
             status(_group_status(group["name"], server, progress))
+            if attempts == 1:
+                status(f"UI phase: {UIPhase.servers_page.value}")
+                status(f"UI phase: {UIPhase.direct_connect_open.value}")
             try:
-                outcome = connect_once(
+                args = (
                     hwnd, cfg, watcher, server["ip"], server["port"],
+                )
+                options = dict(
                     open_servers=(attempts == 1),
                     launch_direct=(attempts == 1 and cold_direct),
                     stop_event=stop_event,
                 )
+                if attempts > 1:
+                    options["reuse_dialog"] = dialog_open
+                    options["on_status"] = status
+                outcome = connect_once(*args, **options)
             except JoinError:
                 outcome = "unclear"
+
+            dialog_open = outcome != "success"
 
             if outcome == "success":
                 notify.notify(APP_NAME, f"Joined {server['name']}!")
@@ -429,7 +514,6 @@ def run_group(group_id, on_status=None, stop_event=None):
             else:
                 unclear[index] += 1
                 if unclear[index] < cfg["max_unclear"]:
-                    dismiss_connection_overlay(hwnd, retry_input_mode(cfg))
                     if wait_for_retry_delay(cfg["retry_interval_s"], stop_event):
                         status("Stop requested.")
                         return "stopped"
@@ -447,7 +531,6 @@ def run_group(group_id, on_status=None, stop_event=None):
                 if hwnd is None:
                     notify.notify(APP_NAME, "SCP:SL is running, but its window could not be found for the next server.")
                     return "unclear"
-            dismiss_connection_overlay(hwnd, retry_input_mode(cfg))
             if wait_for_retry_delay(cfg["retry_interval_s"], stop_event):
                 status("Stop requested.")
                 return "stopped"
@@ -496,7 +579,9 @@ def run(server_name, on_status=None, stop_event=None):
 
         watcher = logwatch.LogWatcher()
         hwnd = winput.find_game_window(GAME_TITLE)
-        cold_direct = transport.choose_method(cfg, game_running=bool(hwnd)) == "direct"
+        # Automatic mode must use the same visible menu flow on every
+        # machine; reserve the command-line path for an explicit preference.
+        cold_direct = cfg.get("connection_method") == "direct" and not hwnd
         if cold_direct:
             status(f"Launching SCP:SL and connecting to {name}...")
         else:
@@ -511,6 +596,7 @@ def run(server_name, on_status=None, stop_event=None):
 
         unclear = 0
         attempts = 0
+        dialog_open = False
         max_attempts = int(cfg["max_attempts"])
         max_minutes = int(cfg["max_minutes"])
         deadline = None if max_minutes == 0 else time.monotonic() + max_minutes * 60
@@ -523,13 +609,20 @@ def run(server_name, on_status=None, stop_event=None):
                 return "stopped"
             attempts += 1
             status(f"Attempt {attempts}: connecting to {name} ({ip}:{port})...")
+            if attempts == 1:
+                status(f"UI phase: {UIPhase.servers_page.value}")
+                status(f"UI phase: {UIPhase.direct_connect_open.value}")
             try:
-                outcome = connect_once(
-                    hwnd, cfg, watcher, ip, port,
+                args = (hwnd, cfg, watcher, ip, port)
+                options = dict(
                     open_servers=(attempts == 1),
                     launch_direct=(attempts == 1 and cold_direct),
                     stop_event=stop_event,
                 )
+                if attempts > 1:
+                    options["reuse_dialog"] = dialog_open
+                    options["on_status"] = status
+                outcome = connect_once(*args, **options)
             except JoinError as e:
                 # A background Unity interaction can be missed without the
                 # game being broken. Treat it as a transient attempt failure
@@ -556,10 +649,14 @@ def run(server_name, on_status=None, stop_event=None):
                     if hwnd is None:
                         notify.notify(APP_NAME, "SCP:SL is running, but its window could not be found for the retry.")
                         return "unclear"
-                dismiss_connection_overlay(hwnd, retry_input_mode(cfg))
+                dialog_open = True
                 delay = cfg["retry_interval_s"]
                 unit = "second" if delay == 1 else "seconds"
-                status(f"Server rejected/full-or-unknown. Retrying in {delay} {unit}...")
+                if outcome in ("rejected_or_unknown", "rejected", "cancelled"):
+                    status("Disconnected/full response detected.")
+                else:
+                    status("Disconnected response detected.")
+                status(f"Retrying in {delay} {unit}...")
                 if wait_for_retry_delay(delay, stop_event):
                     status("Stop requested.")
                     return "stopped"
@@ -569,7 +666,8 @@ def run(server_name, on_status=None, stop_event=None):
             if unclear >= cfg["max_unclear"]:
                 notify.notify(APP_NAME, f"Stuck on an unclear result ({outcome}) — check the game.")
                 return "unclear"
-            dismiss_connection_overlay(hwnd, retry_input_mode(cfg))
+            dialog_open = True
+            status(f"UI phase: {UIPhase.unknown.value}")
             if wait_for_retry_delay(cfg["retry_interval_s"], stop_event):
                 status("Stop requested.")
                 return "stopped"

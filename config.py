@@ -23,6 +23,7 @@ DEFAULTS = {
     # match GetWindowRect/SendInput on 4K displays.
     "calibration_space": None,
     "calibration_client_size": [0, 0],
+    "calibration_metadata": {},
     "client_click_points": {},
     "retry_interval_s": 2,
     "attempt_timeout_s": 20,

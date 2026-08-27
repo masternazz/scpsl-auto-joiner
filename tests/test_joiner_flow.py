@@ -41,7 +41,7 @@ def test_cold_automatic_connection_launches_game_with_connect_argument(monkeypat
     assert launches == [("1.2.3.4", 7778)]
 
 
-def test_automatic_run_lets_connect_argument_launch_game(monkeypatch):
+def test_automatic_run_launches_to_menu_then_uses_recorded_gui_flow(monkeypatch):
     cfg = {
         "navigation_mode": "automatic",
         "attempt_timeout_s": 1,
@@ -55,14 +55,14 @@ def test_automatic_run_lets_connect_argument_launch_game(monkeypatch):
     monkeypatch.setattr(joiner.resolver, "resolve", lambda _name: ("Canada #3", "1.2.3.4", 7778))
     monkeypatch.setattr(joiner.logwatch, "LogWatcher", FakeWatcher)
     monkeypatch.setattr(joiner.winput, "find_game_window", lambda _title: None)
-    monkeypatch.setattr(joiner, "ensure_game_running", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not launch separately")))
+    monkeypatch.setattr(joiner, "ensure_game_running", lambda *_args, **_kwargs: 123)
     calls = []
     monkeypatch.setattr(joiner, "connect_once", lambda *args, **kwargs: calls.append((args, kwargs)) or "success")
     monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
 
     assert joiner.run("Canada #3") == "success"
-    assert calls[0][0][0] is None
-    assert calls[0][1]["launch_direct"] is True
+    assert calls[0][0][0] == 123
+    assert calls[0][1]["launch_direct"] is False
 
 
 def test_warm_run_never_launches_a_second_game_process(monkeypatch):
@@ -214,7 +214,6 @@ def test_full_run_retries_with_background_window_messages(monkeypatch):
         ("click", 530, 550),
         ("key", joiner.winput.VK_RETURN),
         ("key", joiner.winput.VK_ESCAPE),
-        ("click", 440, 193),
         ("click", 500, 490),
         ("text", "1.2.3.4:7778"),
         ("click", 530, 550),
@@ -296,7 +295,8 @@ def test_rejected_server_reports_reason_and_two_second_retry(monkeypatch):
 
     assert joiner.run("Canada #3", on_status=statuses.append) == "success"
     assert 2 in sleeps
-    assert "Server rejected/full-or-unknown. Retrying in 2 seconds..." in statuses
+    assert "Disconnected/full response detected." in statuses
+    assert "Retrying in 2 seconds..." in statuses
 
 
 def test_disconnected_outcome_retries_without_claiming_server_is_full(monkeypatch):
@@ -329,7 +329,8 @@ def test_disconnected_outcome_retries_without_claiming_server_is_full(monkeypatc
     monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
 
     assert joiner.run("Canada #4", on_status=statuses.append) == "success"
-    assert "Server rejected/full-or-unknown. Retrying in 0 seconds..." in statuses
+    assert "Disconnected response detected." in statuses
+    assert "Retrying in 0 seconds..." in statuses
 
 
 def test_connection_start_failure_is_retried_instead_of_ending_the_run(monkeypatch):
@@ -366,7 +367,7 @@ def test_connection_start_failure_is_retried_instead_of_ending_the_run(monkeypat
 
 
 def test_automatic_retry_dismisses_disconnect_overlay_with_foreground_input(monkeypatch):
-    dismissed = []
+    retries = []
     outcomes = iter(("rejected", "success"))
     cfg = {
         "connection_method": "automatic",
@@ -382,12 +383,12 @@ def test_automatic_retry_dismisses_disconnect_overlay_with_foreground_input(monk
     monkeypatch.setattr(joiner.resolver, "resolve", lambda _name: ("Test", "1.2.3.4", 7778))
     monkeypatch.setattr(joiner.logwatch, "LogWatcher", FakeWatcher)
     monkeypatch.setattr(joiner.winput, "find_game_window", lambda _title: 123)
-    monkeypatch.setattr(joiner, "dismiss_connection_overlay", lambda _hwnd, mode="background": dismissed.append(mode))
     monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
-    monkeypatch.setattr(joiner, "connect_once", lambda *_args, **_kwargs: next(outcomes))
+    monkeypatch.setattr(joiner, "connect_once", lambda *_args, **kwargs: retries.append(kwargs) or next(outcomes))
 
     assert joiner.run("Test") == "success"
-    assert dismissed == ["foreground"]
+    assert retries[1]["reuse_dialog"] is True
+    assert retries[1]["on_status"] is not None
 
 
 def test_zero_attempts_and_runtime_run_until_stopped(monkeypatch):
@@ -657,7 +658,6 @@ def test_automatic_warm_retries_use_verified_foreground_navigation(monkeypatch):
         ("click", 530, 550),
         ("key", joiner.winput.VK_RETURN),
         ("key", joiner.winput.VK_ESCAPE),
-        ("click", 440, 193),
         ("click", 500, 490),
         ("text", "1.2.3.4:7778"),
         ("click", 530, 550),
@@ -681,3 +681,58 @@ def test_run_group_opens_servers_only_for_its_first_warm_attempt(monkeypatch):
 
     assert joiner.run_group("group-1") == "success"
     assert calls == [True, False]
+
+
+def test_retry_prepare_reuses_direct_connect_without_menu_navigation(monkeypatch):
+    events = []
+    monkeypatch.setattr(joiner, "click_layout", lambda _hwnd, name, input_mode="background": events.append(("click", name, input_mode)))
+    monkeypatch.setattr(joiner.winput, "replace_text", lambda _hwnd, text: events.append(("text", text)))
+
+    joiner.prepare_direct_connect(
+        123, "10.0.0.5", 7780,
+        open_servers=False, open_dialog=False, input_mode="background",
+    )
+
+    assert events == [
+        ("click", "address_field", "background"),
+        ("text", "10.0.0.5:7780"),
+    ]
+    assert ("click", "servers", "background") not in events
+    assert ("click", "direct_connect", "background") not in events
+
+
+def test_reuse_retry_reopens_direct_connect_only_when_connecting_is_not_confirmed(monkeypatch):
+    events = []
+    statuses = []
+    cfg = {"connection_method": "foreground", "navigation_mode": "automatic", "attempt_timeout_s": 1}
+
+    class RetryWatcher:
+        def __init__(self):
+            self.markers = iter((False, True))
+
+        def wait_for_marker(self, _marker, _timeout, stop_event=None):
+            return next(self.markers)
+
+        def wait_for_outcome(self, _timeout, stop_event=None):
+            return "success"
+
+    monkeypatch.setattr(joiner.config_mod, "load_config", lambda: cfg)
+    monkeypatch.setattr(joiner.winput, "get_window_rect", lambda _hwnd: (0, 0, 1000, 1000))
+    monkeypatch.setattr(joiner.winput, "foreground_click", lambda _hwnd, x, y: events.append(("click", x, y)))
+    monkeypatch.setattr(joiner.winput, "foreground_replace_text", lambda _hwnd, text: events.append(("text", text)))
+    monkeypatch.setattr(joiner.winput, "foreground_key_tap", lambda _hwnd, key: events.append(("key", key)))
+
+    result = joiner.connect_once(
+        123, cfg, RetryWatcher(), "10.0.0.5", 7780,
+        open_servers=False, reuse_dialog=True,
+        on_status=statuses.append,
+    )
+
+    assert result == "success"
+    assert any("Reopening Direct Connect" in item for item in statuses)
+    # The first pass is the existing dialog: it never clicks Servers. The
+    # fallback is allowed to open Direct Connect after recovery.
+    assert events.count(("click", 120, 50)) == 0
+    assert events.count(("click", 440, 193)) == 1
+    assert events.count(("click", 500, 490)) == 2
+    assert events.count(("click", 530, 550)) == 2

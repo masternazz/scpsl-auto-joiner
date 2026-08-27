@@ -189,6 +189,12 @@ class CalibrationDialog(QDialog):
                 int(point[0] - left), int(point[1] - top),
             ]
             self.cfg["calibration_client_size"] = [right - left, bottom - top]
+            window_rect = winput.get_window_rect(hwnd)
+            self.cfg["calibration_metadata"] = {
+                "client_size": [right - left, bottom - top],
+                "window_rect": list(window_rect) if window_rect else None,
+                "dpi": winput.get_window_dpi(hwnd),
+            }
         self.index += 1
         self.progress.setValue(self.index)
         if self.index < len(self.steps):
@@ -600,6 +606,10 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout(); self.calibration_status = label("Automatic scaling enabled — calibration usually is not needed.", "warning"); row.addWidget(self.calibration_status); row.addStretch(); box.addLayout(row)
         button = QPushButton("Open calibration")
         button.setProperty("kind", "primary"); button.clicked.connect(self.calibrate); box.addWidget(button)
+        preview = QPushButton("Preview calculated click targets")
+        preview.setToolTip("Show the native-pixel targets calculated for the current SCP:SL window")
+        preview.clicked.connect(self.preview_click_targets)
+        box.addWidget(preview)
         layout.addWidget(card)
         info, info_box = self.card(); info_box.addWidget(label("WHY THIS EXISTS", "eyebrow")); info_box.addWidget(label("Two positioning modes", "section")); info_box.addWidget(label("Automatic mode scales control positions to the current SCP:SL window. Calibrated mode stores exact positions for unusual layouts. Both keep your physical cursor and keyboard untouched.", "body")); layout.addWidget(info); layout.addStretch()
         return self.scroll_page(content)
@@ -614,7 +624,7 @@ class MainWindow(QMainWindow):
         connection_box.addWidget(label("Automatic uses the verified foreground path for this SCP:SL client and briefly controls the game window, then restores your cursor and previous app. Background-only never moves your cursor but may be ignored by SCP:SL.", "body"))
         self.connection_method_box = QComboBox()
         for title, method in (
-            ("Automatic - direct cold start, verified GUI retry (recommended)", "automatic"),
+            ("Automatic - recorded GUI flow, reliable retries (recommended)", "automatic"),
             ("Direct - use the supported +connect cold start", "direct"),
             ("Background - target only the SCP:SL window", "background"),
             ("Foreground - compatibility fallback", "foreground"),
@@ -627,7 +637,7 @@ class MainWindow(QMainWindow):
         controls, box = self.card()
         box.addWidget(label("NAVIGATION", "eyebrow"))
         box.addWidget(label("Retry positioning", "section"))
-        box.addWidget(label("Cold starts connect directly. Later retries post controls only to SCP:SL, using either resolution-scaled or calibrated positions.", "body"))
+        box.addWidget(label("Automatic mode opens SCP:SL to its menu, follows Servers → Direct Connect, then reuses that dialog for retries. Positions use the live client rectangle or saved calibration.", "body"))
         self.navigation_mode = QComboBox()
         self.navigation_mode.addItem("Automatic scaling — any resolution (recommended)", "automatic")
         self.navigation_mode.addItem("Use saved calibration — exact positions", "manual")
@@ -754,7 +764,7 @@ class MainWindow(QMainWindow):
         content, layout = self.page_content()
         self.heading(layout, "FIELD MANUAL  /  REFERENCE", "How it works", "A plain-language guide to every button and what the automation is doing.")
         for number, title, text in [
-            ("01", "Hands-off direct start", "With SCP:SL closed, the app starts the installed game with Steam authentication and the saved +connect endpoint. No Steam Game Info dialog is used."),
+            ("01", "Recorded client flow", "With SCP:SL closed, the app starts the installed game, follows News → Servers → Direct Connect, and enters the saved endpoint."),
             ("02", "Background retries", "If a server rejects the attempt, controls are posted only to the SCP:SL window. Your physical mouse, keyboard, and foreground app stay untouched."),
             ("03", "Optional calibration", "Automatic positions scale to the game window. If one misses on an unusual layout, hover each requested control and press F8; F9 cancels."),
             ("04", "Remember a server", "Start the watcher and join normally. Player.log supplies the endpoint, then the app asks the server directly for its public name and pre-fills the popup."),
@@ -765,6 +775,25 @@ class MainWindow(QMainWindow):
             card, box = self.card(); box.addWidget(label(number, "number")); box.addWidget(label(title, "section")); box.addWidget(label(text, "body")); layout.addWidget(card)
         layout.addStretch()
         return self.scroll_page(content)
+
+    def preview_click_targets(self):
+        hwnd = winput.find_game_window(joiner.GAME_TITLE)
+        if not hwnd:
+            QMessageBox.information(self, "Click-target preview", "SCP:SL is not open. Start the game first, then run this preview.")
+            return
+        try:
+            points = joiner.calculated_click_points(hwnd)
+            lines = [f"{name.replace('_', ' ').title()}: {point[0]}, {point[1]}" for name, point in points.items()]
+            rect = winput.get_client_rect(hwnd)
+            size = f"{rect[2] - rect[0]} × {rect[3] - rect[1]}" if rect else "unknown"
+            QMessageBox.information(
+                self, "Click-target preview",
+                "Targets are calculated from the live SCP:SL client rectangle.\n\n"
+                f"Client size: {size}\n" + "\n".join(lines) +
+                "\n\nNo input was sent.",
+            )
+        except joiner.JoinError as error:
+            QMessageBox.warning(self, "Click-target preview", str(error))
 
     def show_help(self):
         self.help_dialog = HelpDialog(self)
