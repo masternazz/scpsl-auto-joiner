@@ -617,7 +617,7 @@ def test_automatic_direct_connect_ratio_targets_direct_connect_not_the_left_rent
     assert joiner.layout_point(123, "direct_connect") != rent_area_point
 
 
-def test_automatic_warm_retries_use_verified_foreground_navigation(monkeypatch):
+def test_automatic_warm_retries_use_background_window_messages(monkeypatch):
     events = []
     cfg = {
         "connection_method": "automatic",
@@ -643,9 +643,9 @@ def test_automatic_warm_retries_use_verified_foreground_navigation(monkeypatch):
     monkeypatch.setattr(joiner.logwatch, "LogWatcher", BackgroundWatcher)
     monkeypatch.setattr(joiner.winput, "find_game_window", lambda _title: 123)
     monkeypatch.setattr(joiner.winput, "get_window_rect", lambda _hwnd: (0, 0, 1000, 1000))
-    monkeypatch.setattr(joiner.winput, "foreground_click", lambda _hwnd, x, y: events.append(("click", x, y)))
-    monkeypatch.setattr(joiner.winput, "foreground_replace_text", lambda _hwnd, text: events.append(("text", text)))
-    monkeypatch.setattr(joiner.winput, "foreground_key_tap", lambda _hwnd, key: events.append(("key", key)))
+    monkeypatch.setattr(joiner.winput, "post_click", lambda _hwnd, x, y: events.append(("click", x, y)))
+    monkeypatch.setattr(joiner.winput, "replace_text", lambda _hwnd, text: events.append(("text", text)))
+    monkeypatch.setattr(joiner.winput, "post_key_tap", lambda _hwnd, key: events.append(("key", key)))
     monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
     monkeypatch.setattr(joiner.time, "sleep", lambda _seconds: None)
 

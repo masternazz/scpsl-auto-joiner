@@ -32,16 +32,16 @@ def choose_method(config, game_running) -> ConnectionMethod:
         return "direct"
     # Old test/config dictionaries may omit the new setting. The persisted
     # config migration supplies "automatic" for real users; treating an
-    # omitted value as background preserves that legacy API behavior.
+    # omitted value as background preserves the no-focus safety guarantee.
     preferred = config.get("connection_method", "background")
     if preferred == "foreground":
         return "foreground"
     if preferred == "background":
         return "background"
-    # This client's Unity Input System ignores PostMessage. Use the verified
-    # foreground path for warm connections; foreground_click restores the
-    # user's prior cursor and window after each operation.
-    return "foreground"
+    # Automatic is deliberately background-safe. It may be less compatible
+    # with some Unity builds, but it must never silently steal the user's
+    # cursor or foreground application. Foreground is explicit in Settings.
+    return "background"
 
 
 def connect_with_fallback(ctx) -> None:
