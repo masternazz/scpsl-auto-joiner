@@ -9,7 +9,7 @@ import tempfile
 from urllib.parse import urlparse
 import urllib.request
 
-CURRENT_VERSION = "0.3.4"
+CURRENT_VERSION = "0.3.5"
 RELEASES_API = "https://api.github.com/repos/masternazz/scpsl-auto-joiner/releases/latest"
 RELEASES_PAGE = "https://github.com/masternazz/scpsl-auto-joiner/releases"
 

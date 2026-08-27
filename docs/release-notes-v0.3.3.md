@@ -3,7 +3,7 @@
 ## Background-safe Automatic mode
 
 - Automatic mode now uses targeted background window messages like the
-  background mode in Full Auto Forza Edition.
+  background mode for the target game window.
 - Automatic mode never calls `SetCursorPos`, `SendInput`, or foreground-focus
   APIs, so the user's mouse, keyboard, and active app remain available while
   waiting.

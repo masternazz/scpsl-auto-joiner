@@ -2,7 +2,7 @@
 capture, no template matching, just window-finding and clicking/typing. Click
 and key-tap logic (SendInput byte layout, PostMessage lParam bit packing) is
 adapted from the proven implementation in
-H:\\vscode\\Full-Auto-Forza-Edition\\capture.py, trimmed to what this project
+Windows message/input helpers, trimmed to what this project
 needs. Pure ctypes — no new pip dependency."""
 import ctypes
 import time
@@ -417,7 +417,7 @@ def post_text(hwnd, text: str, post_wait: float = 0.02):
 def post_window_active(hwnd):
     """Tell a background target it is active without changing Windows focus.
 
-    This mirrors the background-safe activation hint used by Full Auto Forza.
+    This provides a background-safe activation hint for the target game window.
     It is only a window message: it never moves the cursor or calls a focus
     API, and SCP:SL remains free to ignore it.
     """

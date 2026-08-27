@@ -3,8 +3,7 @@
 ## Background GUI compatibility patch
 
 - Background GUI actions now send a non-focus activation hint before clicks,
-  keys, and text, matching the background-input approach used by Full Auto
-  Forza Edition.
+  keys, and text.
 - Automatic mode still never moves the cursor, sends global `SendInput`, or
   changes the foreground window.
 - The error shown when SCP:SL ignores background input now accurately explains

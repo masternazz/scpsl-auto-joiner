@@ -621,7 +621,7 @@ class MainWindow(QMainWindow):
         connection, connection_box = self.card()
         connection_box.addWidget(label("CONNECTION METHOD", "eyebrow"))
         connection_box.addWidget(label("Prefer a safe connection path", "section"))
-        connection_box.addWidget(label("Automatic uses background window messages like Forza’s background mode and never moves your cursor or changes your foreground app. If SCP:SL ignores them, choose Foreground explicitly for compatibility.", "body"))
+        connection_box.addWidget(label("Automatic uses background window messages and never moves your cursor or changes your foreground app. If SCP:SL ignores them, choose Foreground explicitly for compatibility.", "body"))
         self.connection_method_box = QComboBox()
         for title, method in (
             ("Automatic - recorded GUI flow, reliable retries (recommended)", "automatic"),

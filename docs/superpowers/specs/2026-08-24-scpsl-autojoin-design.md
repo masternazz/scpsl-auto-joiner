@@ -66,7 +66,7 @@ name, it resolves the server, repeatedly attempts to join, and notifies you
   the two Direct Connect fields — see Calibration below.
 - **Background clicking**: input is sent via `PostMessage` (not `SendInput`),
   so it doesn't steal window focus and you can keep using other windows while
-  it retries — same technique your Forza project (`capture.py`) already uses
+  it retries — using background window messages for menu clicks.
   for menu clicks there. Unverified against SCP:SL specifically until built;
   see the fallback in the Driver loop below.
 
@@ -174,11 +174,11 @@ servers.json ──┐
    prompts "What should I call this server?" — the name you type is saved to
    `servers.json` alongside that IP/port. One ordinary click, ever, per server
    you want to auto-join later; no file editing, no API, no key.
-3. **Input driver** (`winput.py`): adapted from FAFE's `capture.py` — just the
+3. **Input driver** (`winput.py`): a small Windows-message input layer — just the
    pieces needed: DPI awareness (`SetProcessDpiAwarenessContext`, from Halo's
    `common.py` pattern), `find_game_window("SCP: Secret Laboratory")`, and
    PostMessage-based `post_click` / `post_key` (background, focus-preserving —
-   FAFE's proven pattern) for both mouse clicks and key taps (Enter / Esc /
+   the same pattern) for both mouse clicks and key taps (Enter / Esc /
    typed IP:port characters). Also keeps `focus_window` + SendInput
    `mouse_click`/key-tap as a fallback path (see Driver loop). Pure `ctypes`,
    no new dependency.

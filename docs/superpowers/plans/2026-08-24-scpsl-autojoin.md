@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - No OCR, screen-reading, or template matching anywhere in the normal run path (spec Non-goals).
-- No new pip dependency for input automation — `ctypes` only, adapted from `H:\vscode\Full-Auto-Forza-Edition\capture.py`'s proven PostMessage/SendInput patterns.
+- No new pip dependency for input automation — `ctypes` only, using Windows PostMessage/SendInput patterns.
 - Server identity comes only from local `servers.json`, never from `api.scpslgame.com` (Cloudflare-gated, requires a Northwood-issued key — confirmed dead end, see spec).
 - Outcome detection signatures (verified live against the real client):
   - Success: `Scene Manager: Loaded scene 'Facility'`
@@ -478,7 +478,7 @@ git commit -m "Add local servers.json resolver"
 - Consumes: nothing from earlier tasks.
 - Produces: `winput.set_dpi_awareness() -> None`, `winput.find_game_window(title_exact) -> int|None`, `winput.focus_window(hwnd) -> bool`, `winput.mouse_click(x, y, post_wait=0.5) -> None` (foreground, SendInput), `winput.send_key_tap(vk, post_wait=0.1) -> None` (foreground, SendInput), `winput.post_click(hwnd, screen_x, screen_y, post_wait=0.5) -> None` (background, PostMessage), `winput.post_key_tap(hwnd, vk, post_wait=0.1) -> None` (background, PostMessage), `winput.post_text(hwnd, text, post_wait=0.02) -> None` (background, WM_CHAR), `winput.VK_ESCAPE` (int).
 
-This module is pure Windows API glue with no meaningful unit-testable branching (its logic is "call this ctypes function with these bytes"); it's adapted line-for-line from the proven implementation in `H:\vscode\Full-Auto-Forza-Edition\capture.py`. Verification is a runnable smoke check (finds a window guaranteed to exist) plus manual verification against the real game in Task 7.
+This module is pure Windows API glue with no meaningful unit-testable branching (its logic is "call this ctypes function with these bytes"). Verification is a runnable smoke check (finds a window guaranteed to exist) plus manual verification against the real game in Task 7.
 
 - [ ] **Step 1: Write the implementation**
 
@@ -488,7 +488,7 @@ This module is pure Windows API glue with no meaningful unit-testable branching 
 capture, no template matching, just window-finding and clicking/typing. Click
 and key-tap logic (SendInput byte layout, PostMessage lParam bit packing) is
 adapted from the proven implementation in
-H:\\vscode\\Full-Auto-Forza-Edition\\capture.py, trimmed to what this project
+Windows message/input helpers, trimmed to what this project
 needs. Pure ctypes — no new pip dependency."""
 import ctypes
 import time
