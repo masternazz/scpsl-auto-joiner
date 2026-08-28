@@ -407,7 +407,7 @@ def dismiss_connection_overlay(hwnd, input_mode="background"):
 
 def retry_input_mode(cfg):
     """Return the input path used to dismiss a failed connection overlay."""
-    return "foreground" if cfg.get("connection_method", "background") == "foreground" else "background"
+    return "foreground" if cfg.get("connection_method", "automatic") in ("automatic", "foreground") else "background"
 
 
 def wait_for_retry_delay(delay, stop_event=None):

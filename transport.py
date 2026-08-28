@@ -30,18 +30,16 @@ def choose_method(config, game_running) -> ConnectionMethod:
     """Choose a method without launching Steam's connection dialog."""
     if not game_running:
         return "direct"
-    # Old test/config dictionaries may omit the new setting. The persisted
-    # config migration supplies "automatic" for real users; treating an
-    # omitted value as background preserves the no-focus safety guarantee.
-    preferred = config.get("connection_method", "background")
+    # Automatic uses the reliable temporary-foreground path. Background is
+    # still available as an explicit hands-off compatibility option.
+    preferred = config.get("connection_method", "automatic")
     if preferred == "foreground":
         return "foreground"
     if preferred == "background":
         return "background"
-    # Automatic is deliberately background-safe. It may be less compatible
-    # with some Unity builds, but it must never silently steal the user's
-    # cursor or foreground application. Foreground is explicit in Settings.
-    return "background"
+    # SCP:SL's Unity Input System ignores posted mouse/key messages. The
+    # foreground helpers restore the user's window and cursor after each action.
+    return "foreground"
 
 
 def connect_with_fallback(ctx) -> None:

@@ -341,7 +341,7 @@ def test_onboarding_diagnostics_and_settings_wiring(monkeypatch):
 
     window = gui.MainWindow()
 
-    assert window.pages.count() == 4
+    assert window.pages.count() == 5
     window.servers_nav.click(); qt_app.processEvents()
     assert window.pages.currentIndex() == 1
     window.setup_nav.click(); qt_app.processEvents()
@@ -367,6 +367,21 @@ def test_onboarding_diagnostics_and_settings_wiring(monkeypatch):
     assert window.onboarding_dialog.isVisible()
     assert "safe direct-connect check" in window.onboarding_result.text().lower()
     window.onboarding_dialog.close()
+    window.close()
+
+
+def test_text_packs_page_is_available_and_scrollable(monkeypatch, tmp_path):
+    qt_app = app()
+    monkeypatch.setattr(gui.resolver, "load_servers", lambda: {})
+    monkeypatch.setattr(gui, "find_translations_dir", lambda: str(tmp_path / "Translations"))
+
+    window = gui.MainWindow()
+
+    assert window.pages.count() == 5
+    window.packs_nav.click(); qt_app.processEvents()
+    assert window.pages.currentIndex() == 4
+    assert window.pack_drop_zone.acceptDrops()
+    assert window.pack_drop_zone.accessibleName() == "Translation pack drop zone"
     window.close()
 
 

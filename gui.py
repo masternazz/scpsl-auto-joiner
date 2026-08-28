@@ -1,6 +1,7 @@
 """Crisp, DPI-aware Qt desktop UI for the SCP:SL Auto-Joiner."""
 import json
 import os
+import tempfile
 import threading
 import time
 from html import escape
@@ -13,7 +14,7 @@ winput.set_dpi_awareness()
 from PySide6.QtCore import QObject, QTimer, QUrl, Qt, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPalette, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QCompleter, QDialog, QDialogButtonBox, QFrame, QGridLayout,
+    QApplication, QComboBox, QCompleter, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout,
     QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
     QProgressBar, QScrollArea, QSizePolicy, QSpacerItem, QStackedWidget, QTabWidget,
     QCheckBox, QListWidget, QListWidgetItem, QSpinBox, QTextEdit, QVBoxLayout, QWidget,
@@ -26,6 +27,7 @@ import logwatch
 import resolver
 import transport
 import updater
+from translation_packs import PackError, PackManager
 from app_paths import app_dir, resource_path
 
 BG = "#0d0a12"
@@ -66,6 +68,38 @@ class Bridge(QObject):
     update_finished = Signal(str, bool)
     restart_requested = Signal()
     server_refreshed = Signal(str, object)
+    packs_changed = Signal(object)
+    pack_search_finished = Signal(object, str)
+
+
+class PackDropZone(QFrame):
+    paths_dropped = Signal(list)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.setObjectName("packDropZone")
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        paths = [url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()]
+        if paths:
+            self.paths_dropped.emit(paths)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+
+def find_translations_dir():
+    executable = joiner.find_game_executable()
+    if executable:
+        return os.path.join(os.path.dirname(executable), "Translations")
+    return os.path.join(app_dir(), "Translations")
 
 
 def label(text, style="body"):
@@ -272,12 +306,16 @@ class MainWindow(QMainWindow):
         self.bridge.update_finished.connect(self.update_finished_notice)
         self.bridge.restart_requested.connect(QApplication.quit)
         self.bridge.server_refreshed.connect(self.apply_server_refresh)
+        self.bridge.packs_changed.connect(self.apply_pack_state)
+        self.bridge.pack_search_finished.connect(self.apply_pack_search)
         self.busy = False
         self.stop_event = threading.Event()
         self.servers = {}
         self.server_records = {}
         self.server_details = {}
         self.groups = []
+        self.pack_manager = PackManager(app_dir(), find_translations_dir())
+        self.pack_state = self.pack_manager.load()
         self.setWindowTitle("SCP:SL // CONTAINMENT")
         self.setMinimumSize(760, 560)
         self.resize(1180, 760)
@@ -321,14 +359,16 @@ class MainWindow(QMainWindow):
         self.servers_nav = QPushButton("02   Servers")
         self.setup_nav = QPushButton("03   Diagnostics")
         self.settings_nav = QPushButton("04   Settings")
+        self.packs_nav = QPushButton("05   Text Packs")
         self.help_nav = QPushButton("Help")
-        for button in (self.join_nav, self.servers_nav, self.setup_nav, self.settings_nav, self.help_nav):
+        for button in (self.join_nav, self.servers_nav, self.setup_nav, self.settings_nav, self.packs_nav, self.help_nav):
             button.setProperty("kind", "nav")
             side.addWidget(button)
         self.join_nav.clicked.connect(lambda: self.show_page(0))
         self.servers_nav.clicked.connect(lambda: self.show_page(1))
         self.setup_nav.clicked.connect(lambda: self.show_page(2))
         self.settings_nav.clicked.connect(lambda: self.show_page(3))
+        self.packs_nav.clicked.connect(lambda: self.show_page(4))
         self.help_nav.clicked.connect(self.show_help)
         side.addStretch()
         side.addWidget(label("LOCAL DESKTOP TOOL", "eyebrow"))
@@ -340,6 +380,7 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(self.servers_page())
         self.pages.addWidget(self.setup_page())
         self.pages.addWidget(self.settings_page())
+        self.pages.addWidget(self.text_packs_page())
         shell_layout.addWidget(self.pages, 1)
         self.setCentralWidget(shell)
         self.show_page(0)
@@ -386,7 +427,7 @@ class MainWindow(QMainWindow):
         destination, box = self.card()
         box.addWidget(label("START WITH A SAVED SERVER", "eyebrow"))
         box.addWidget(label("Servers stay local", "section"))
-        box.addWidget(label("Use the Servers page to choose or edit a saved endpoint, arrange an ordered group, and start auto-join. The primary connection path uses direct launch and background retries without mouse capture.", "body"))
+        box.addWidget(label("Use the Servers page to choose or edit a saved endpoint, arrange an ordered group, and start auto-join. The primary path briefly focuses SCP:SL for reliable GUI actions, then restores your input.", "body"))
         self.open_servers_button = QPushButton("Open Servers")
         self.open_servers_button.setProperty("kind", "primary")
         self.open_servers_button.clicked.connect(lambda: self.show_page(1))
@@ -399,7 +440,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(status_card)
         activity, activity_box = self.card()
         row = QHBoxLayout(); row.addWidget(label("LIVE ACTIVITY", "eyebrow")); row.addStretch(); self.feed = label("IDLE", "pill"); row.addWidget(self.feed); activity_box.addLayout(row)
-        self.status = label("Ready. Automatic direct start and background retries are enabled.", "status")
+        self.status = label("Ready. Automatic GUI actions with input restoration are enabled.", "status")
         activity_box.addWidget(self.status)
         stage_row = QHBoxLayout(); stage_row.setSpacing(6)
         self.stage_labels = {}
@@ -611,7 +652,7 @@ class MainWindow(QMainWindow):
         preview.clicked.connect(self.preview_click_targets)
         box.addWidget(preview)
         layout.addWidget(card)
-        info, info_box = self.card(); info_box.addWidget(label("WHY THIS EXISTS", "eyebrow")); info_box.addWidget(label("Two positioning modes", "section")); info_box.addWidget(label("Automatic mode scales control positions to the current SCP:SL window. Calibrated mode stores exact positions for unusual layouts. Both keep your physical cursor and keyboard untouched.", "body")); layout.addWidget(info); layout.addStretch()
+        info, info_box = self.card(); info_box.addWidget(label("WHY THIS EXISTS", "eyebrow")); info_box.addWidget(label("Two positioning modes", "section")); info_box.addWidget(label("Automatic mode scales control positions to the current SCP:SL window. Calibrated mode stores exact positions for unusual layouts. Automatic briefly restores SCP:SL focus for each action; Background-only keeps your physical input untouched.", "body")); layout.addWidget(info); layout.addStretch()
         return self.scroll_page(content)
 
     def settings_page(self):
@@ -621,10 +662,10 @@ class MainWindow(QMainWindow):
         connection, connection_box = self.card()
         connection_box.addWidget(label("CONNECTION METHOD", "eyebrow"))
         connection_box.addWidget(label("Prefer a safe connection path", "section"))
-        connection_box.addWidget(label("Automatic uses background window messages and never moves your cursor or changes your foreground app. If SCP:SL ignores them, choose Foreground explicitly for compatibility.", "body"))
+        connection_box.addWidget(label("Automatic briefly focuses SCP:SL for reliable GUI actions, then restores your cursor and previous app. Background-only keeps your input untouched but may be ignored by Unity.", "body"))
         self.connection_method_box = QComboBox()
         for title, method in (
-            ("Automatic - recorded GUI flow, reliable retries (recommended)", "automatic"),
+            ("Automatic - reliable GUI actions with restore (recommended)", "automatic"),
             ("Direct - use the supported +connect cold start", "direct"),
             ("Background - target only the SCP:SL window", "background"),
             ("Foreground - compatibility fallback", "foreground"),
@@ -776,6 +817,141 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         return self.scroll_page(content)
 
+    def text_packs_page(self):
+        content, layout = self.page_content()
+        self.heading(layout, "LOCAL CUSTOMIZATION  /  TRANSLATIONS", "Text Packs", "Install community translation folders or ZIP files and switch between them without touching the built-in languages.")
+        drop_card, drop_layout = self.card()
+        drop_layout.addWidget(label("IMPORT", "eyebrow"))
+        drop_layout.addWidget(label("Bring in a translation pack", "section"))
+        drop_layout.addWidget(label("Drop a folder or ZIP anywhere in this box, or choose one from your computer. GitHub links can be pasted below.", "body"))
+        self.pack_drop_zone = PackDropZone()
+        self.pack_drop_zone.setAccessibleName("Translation pack drop zone")
+        drop_zone_layout = QVBoxLayout(self.pack_drop_zone)
+        drop_zone_layout.setContentsMargins(18, 18, 18, 18)
+        drop_zone_layout.addWidget(label("DROP FOLDER OR ZIP HERE", "section"), alignment=Qt.AlignCenter)
+        drop_zone_layout.addWidget(label("The app looks for manifest.json and translation .txt files.", "helper"), alignment=Qt.AlignCenter)
+        self.pack_drop_zone.paths_dropped.connect(self.import_pack_paths)
+        drop_layout.addWidget(self.pack_drop_zone)
+        buttons = QHBoxLayout()
+        choose_folder = QPushButton("Choose folder"); choose_folder.clicked.connect(self.choose_pack_folder)
+        choose_zip = QPushButton("Choose ZIP"); choose_zip.clicked.connect(self.choose_pack_zip)
+        buttons.addWidget(choose_folder); buttons.addWidget(choose_zip); buttons.addStretch()
+        drop_layout.addLayout(buttons)
+        link_row = QHBoxLayout(); self.pack_link_input = QLineEdit(); self.pack_link_input.setPlaceholderText("Paste a GitHub repository or direct .zip link…"); self.pack_link_input.setAccessibleName("Translation pack link")
+        link_button = QPushButton("Install link"); link_button.setProperty("kind", "primary"); link_button.clicked.connect(self.install_pack_link)
+        link_row.addWidget(self.pack_link_input, 1); link_row.addWidget(link_button); drop_layout.addLayout(link_row)
+        self.pack_feedback = label("Ready.", "helper"); drop_layout.addWidget(self.pack_feedback)
+        layout.addWidget(drop_card)
+
+        search_card, search_layout = self.card()
+        search_layout.addWidget(label("DISCOVER", "eyebrow")); search_layout.addWidget(label("Search GitHub translation packs", "section"))
+        search_row = QHBoxLayout(); self.pack_search_input = QLineEdit(); self.pack_search_input.setPlaceholderText("SCP:SL translation"); self.pack_search_input.setText("SCP:SL translation")
+        search_button = QPushButton("Search"); search_button.setProperty("kind", "primary"); search_button.clicked.connect(self.search_packs)
+        search_row.addWidget(self.pack_search_input, 1); search_row.addWidget(search_button); search_layout.addLayout(search_row)
+        self.pack_search_results = QVBoxLayout(); search_layout.addLayout(self.pack_search_results)
+        layout.addWidget(search_card)
+
+        installed, installed_layout = self.card(); installed_layout.addWidget(label("INSTALLED", "eyebrow")); installed_layout.addWidget(label("Your translation packs", "section"))
+        self.pack_cards = QVBoxLayout(); installed_layout.addLayout(self.pack_cards)
+        layout.addWidget(installed); layout.addStretch()
+        self.refresh_pack_cards()
+        return self.scroll_page(content)
+
+    def choose_pack_folder(self):
+        path = QFileDialog.getExistingDirectory(self, "Choose translation pack folder")
+        if path: self.import_pack_paths([path])
+
+    def choose_pack_zip(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Choose translation pack ZIP", "", "ZIP archives (*.zip)")
+        if path: self.import_pack_paths([path])
+
+    def import_pack_paths(self, paths):
+        for path in paths:
+            try:
+                self.pack_manager.import_path(path)
+                self.pack_feedback.setText(f"Imported {os.path.basename(path)}.")
+            except (OSError, PackError) as exc:
+                self.pack_feedback.setText(f"Could not import {os.path.basename(path)}: {exc}")
+        self.pack_state = self.pack_manager.load(); self.refresh_pack_cards()
+
+    def install_pack_link(self):
+        url = self.pack_link_input.text().strip()
+        if not url: return
+        self.pack_feedback.setText("Downloading translation pack…")
+        threading.Thread(target=self._install_pack_link, args=(url,), daemon=True).start()
+
+    def _install_pack_link(self, url):
+        try:
+            download_url = self.pack_manager.resolve_link(url)
+            payload = self.pack_manager._read_url(download_url)
+            temporary = os.path.join(tempfile.gettempdir(), f"scpsl-pack-{time.time_ns()}.zip")
+            with open(temporary, "wb") as stream: stream.write(payload)
+            self.pack_manager.import_path(temporary, source_url=url); os.remove(temporary)
+            self.bridge.packs_changed.emit(self.pack_manager.load())
+        except Exception as exc:
+            self.bridge.pack_search_finished.emit([], f"Could not install link: {exc}")
+
+    def search_packs(self):
+        query = self.pack_search_input.text().strip() or "SCP:SL translation"
+        self.pack_feedback.setText("Searching GitHub…")
+        threading.Thread(target=self._search_packs, args=(query,), daemon=True).start()
+
+    def _search_packs(self, query):
+        try: results = self.pack_manager.search_github(query); message = f"Found {len(results)} repositories."
+        except Exception as exc: results, message = [], f"GitHub search failed: {exc}"
+        self.bridge.pack_search_finished.emit(results, message)
+
+    def apply_pack_search(self, results, message):
+        self.pack_feedback.setText(message)
+        while self.pack_search_results.count():
+            item = self.pack_search_results.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+        for result in results[:20]:
+            row = QFrame(); row.setObjectName("serverBrowserCard"); box = QHBoxLayout(row)
+            info = label(f"{result.get('full_name', 'Unknown')}\n{result.get('description') or 'No description'}", "body")
+            button = QPushButton("Install"); button.clicked.connect(lambda _=False, url=result.get("html_url", ""): self.pack_link_input.setText(url) or self.install_pack_link())
+            box.addWidget(info, 1); box.addWidget(button); self.pack_search_results.addWidget(row)
+
+    def apply_pack_state(self, state):
+        self.pack_state = state; self.refresh_pack_cards(); self.pack_feedback.setText("Translation pack installed.")
+
+    def refresh_pack_cards(self):
+        if not hasattr(self, "pack_cards"): return
+        while self.pack_cards.count():
+            item = self.pack_cards.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+        packs = self.pack_state.get("packs", [])
+        if not packs:
+            self.pack_cards.addWidget(label("No custom packs installed yet.", "helper")); return
+        for pack in packs:
+            row = QFrame(); row.setObjectName("serverBrowserCard"); box = QHBoxLayout(row)
+            active = pack.get("id") == self.pack_state.get("active_pack")
+            info = label(f"{pack.get('name', 'Unnamed')}  {'· ACTIVE' if active else ''}\n{', '.join(pack.get('authors', []))}  ·  {pack.get('folder', '')}", "body")
+            box.addWidget(info, 1)
+            activate = QPushButton("Default" if active else "Activate"); activate.clicked.connect(lambda _=False, pid=pack["id"], is_active=active: self.toggle_pack(pid, is_active))
+            open_folder = QPushButton("Open folder"); open_folder.clicked.connect(lambda _=False, folder=pack.get("folder", ""): self.open_pack_folder(folder))
+            restore = QPushButton("Restore backup"); restore.setEnabled(bool(pack.get("backup"))); restore.clicked.connect(lambda _=False, pid=pack["id"]: self.restore_pack(pid))
+            delete = QPushButton("Delete"); delete.setProperty("kind", "danger"); delete.clicked.connect(lambda _=False, pid=pack["id"]: self.delete_pack(pid))
+            box.addWidget(activate); box.addWidget(open_folder); box.addWidget(restore); box.addWidget(delete); self.pack_cards.addWidget(row)
+
+    def toggle_pack(self, pack_id, active):
+        self.pack_state = self.pack_manager.deactivate() if active else self.pack_manager.activate(pack_id); self.refresh_pack_cards()
+
+    def delete_pack(self, pack_id):
+        if QMessageBox.question(self, "Delete translation pack", "Delete this installed translation pack?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
+            self.pack_manager.delete(pack_id); self.pack_state = self.pack_manager.load(); self.refresh_pack_cards()
+
+    def open_pack_folder(self, folder):
+        path = os.path.join(self.pack_manager.translations_dir, folder)
+        try: os.startfile(path)
+        except OSError: self.pack_feedback.setText("Could not open the translation pack folder.")
+
+    def restore_pack(self, pack_id):
+        if self.pack_manager.restore(pack_id):
+            self.pack_state = self.pack_manager.load(); self.refresh_pack_cards(); self.pack_feedback.setText("Backup restored.")
+        else:
+            self.pack_feedback.setText("No backup is available for that pack.")
+
     def preview_click_targets(self):
         hwnd = winput.find_game_window(joiner.GAME_TITLE)
         if not hwnd:
@@ -834,11 +1010,11 @@ class MainWindow(QMainWindow):
         checks = self._readiness_checks()
         method = cfg.get("connection_method", "automatic")
         method_text = {
-            "automatic": "Automatic (background-only, safe input)",
+            "automatic": "Automatic (temporary foreground, restores input)",
             "direct": "Direct (supported +connect cold start)",
             "background": "Background (targeted SCP:SL window messages)",
             "foreground": "Foreground (compatibility fallback)",
-        }.get(method, "Automatic (background-only, safe input)")
+        }.get(method, "Automatic (temporary foreground, restores input)")
         game_text = "detected" if checks["executable"] else "not detected"
         log_text = "writable" if checks["log_writable"] else ("found but not writable" if checks["log_exists"] else "not found yet")
         if cfg.get("navigation_mode") == "manual" and config_mod.calibrated(cfg):
@@ -900,7 +1076,7 @@ class MainWindow(QMainWindow):
 
     def show_page(self, index):
         self.pages.setCurrentIndex(index)
-        for button, active in ((self.join_nav, index == 0), (self.servers_nav, index == 1), (self.setup_nav, index == 2), (self.settings_nav, index == 3)):
+        for button, active in ((self.join_nav, index == 0), (self.servers_nav, index == 1), (self.setup_nav, index == 2), (self.settings_nav, index == 3), (self.packs_nav, index == 4)):
             button.setProperty("active", active); button.style().unpolish(button); button.style().polish(button)
 
     def refresh(self):
@@ -961,7 +1137,7 @@ class MainWindow(QMainWindow):
         if cfg.get("navigation_mode") == "manual" and not config_mod.calibrated(cfg):
             self.settings_feedback.setText("Your previous DPI-scaled calibration is disabled. Run calibration once to capture correct 4K physical pixels.")
         else:
-            self.settings_feedback.setText("Saved calibration is active for retries." if mode == "manual" else "Automatic scaling is active; your physical input stays free.")
+            self.settings_feedback.setText("Saved calibration is active for retries." if mode == "manual" else "Automatic scaling is active; input is restored after each GUI action.")
 
     def save_settings(self):
         cfg = config_mod.load_config()
@@ -1007,7 +1183,7 @@ class MainWindow(QMainWindow):
         config_mod.save_config(cfg)
         self.load_settings_form(cfg)
         self.calibration_status.setText("Automatic scaling enabled — calibration usually is not needed.")
-        self.settings_feedback.setText("Automatic scaling enabled and saved. Your physical input stays free.")
+        self.settings_feedback.setText("Automatic scaling enabled and saved. Input is restored after each GUI action.")
 
     def preview_accent(self):
         if hasattr(self, "accent_box"):

@@ -14,10 +14,10 @@ def test_build_direct_args_uses_the_exact_supported_connect_arguments():
 
 def test_automatic_method_uses_direct_only_while_the_game_is_cold():
     assert transport.choose_method({"connection_method": "automatic"}, game_running=False) == "direct"
-    assert transport.choose_method({"connection_method": "automatic"}, game_running=True) == "background"
+    assert transport.choose_method({"connection_method": "automatic"}, game_running=True) == "foreground"
 
 
-def test_automatic_warm_connection_uses_background_path():
+def test_automatic_warm_connection_uses_temporary_foreground_path():
     events = []
 
     class Context:
@@ -43,11 +43,11 @@ def test_automatic_warm_connection_uses_background_path():
     context = Context()
 
     assert transport.connect_with_fallback(context) is None
-    assert context.method == "background"
-    assert events == ["background", "log"]
+    assert context.method == "foreground"
+    assert events == ["foreground", "log"]
 
 
-def test_automatic_warm_connection_is_background_safe():
+def test_automatic_warm_connection_does_not_use_background_only_path():
     events = []
 
     class Context:
@@ -58,10 +58,10 @@ def test_automatic_warm_connection_is_background_safe():
             events.append("direct")
 
         def start_background(self):
-            events.append("background")
+            raise AssertionError("Automatic must use the reliable foreground path")
 
         def start_foreground(self):
-            raise AssertionError("Automatic mode must never steal foreground input")
+            events.append("foreground")
 
         def wait_for_connecting(self):
             events.append("log")
@@ -73,8 +73,8 @@ def test_automatic_warm_connection_is_background_safe():
     context = Context()
     transport.connect_with_fallback(context)
 
-    assert context.method == "background"
-    assert events == ["background", "log"]
+    assert context.method == "foreground"
+    assert events == ["foreground", "log"]
 
 
 def test_explicit_background_mode_never_falls_back_to_foreground():

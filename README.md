@@ -29,6 +29,9 @@ The portable ZIP runs from any folder. The setup installer creates a per-user in
 - Runs with no attempt or runtime limit when either limit is set to `0`
 - Supports automatic resolution-relative controls and optional per-computer calibration
 - Lets you delete saved servers and stop a running join at any time
+- Imports SCP:SL translation packs from dragged folders, ZIP files, GitHub links, or local paths
+- Searches GitHub dynamically for community translation repositories
+- Keeps multiple packs installed and lets you switch one active custom pack on or off
 
 ## Requirements
 
@@ -55,7 +58,7 @@ The app checks the public GitHub Releases endpoint in the background at startup.
 
 The app exposes these controls:
 
-- **Connection method**: Automatic direct cold start and background retry is recommended; background and foreground compatibility preferences remain available
+- **Connection method**: Automatic temporary-foreground GUI actions are recommended; Background-only remains available as a hands-off compatibility option
 - **Navigation mode**: Use automatic resolution-relative controls or saved calibration
 - **Group looping**: Restart ordered groups after the final server, or stop after one pass
 - **Server refresh timeout**: Set the local A2S_INFO status-refresh timeout
@@ -69,13 +72,19 @@ The app exposes these controls:
 
 When both limits are `0`, auto-join continues until the server accepts the connection or you press **Stop**.
 
+## Text Packs
+
+Open **Text Packs** to drag in a translation folder or ZIP, choose one from a file picker, paste a GitHub repository/release link, or search GitHub for SCP:SL translation repositories. The app looks for `manifest.json` and translation `.txt` files, supports ZIPs with an extra outer folder, and installs packs in SCP:SL's `Translations` folder.
+
+Multiple packs can remain installed, but SCP:SL uses one selected language at a time. Use **Activate** to mark a custom pack as active, or **Default** to switch the app back to the built-in language. Replacing a pack managed by the app creates a backup first; unmanaged built-in language folders are preserved. The app never executes imported pack contents.
+
 Windows 10 is a supported target; the installer refuses older Windows versions so the packaged Qt runtime is not deployed onto an unsupported system. Windows notifications use the native toast path when available, with the in-app live feed as a fallback.
 
 ## How results are detected
 
 SCP:SL writes connection events to `Player.log`. The app watches new log entries and classifies each attempt as connecting, accepted, rejected, cancelled, full, or timed out. This keeps join-state detection independent of monitor resolution.
 
-The app normally sends input to the SCP:SL window so you can use other applications while it waits. On the tested SCP:SL client, Automatic uses the verified GUI path for warm retries and briefly controls/restores the game window because Unity ignores background messages. Background-only never moves the cursor but may be ignored by SCP:SL.
+The app sends input to SCP:SL only during short GUI actions, then restores your previous window and cursor. Automatic briefly foregrounds the game for reliable Unity input and returns control to you while it waits. Background-only never moves the cursor but may be ignored by SCP:SL.
 
 ## Local data
 

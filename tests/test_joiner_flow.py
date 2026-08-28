@@ -177,10 +177,12 @@ def test_manual_layout_uses_native_pixels_without_rescaling(monkeypatch):
     assert clicks == [(123, 2020, 1190)]
 
 
-def test_full_run_retries_with_background_window_messages(monkeypatch):
+def test_full_run_retries_with_explicit_background_window_messages(monkeypatch):
     events = []
     cfg = {
+        "connection_method": "background",
         "navigation_mode": "automatic",
+        "connection_method": "background",
         "click_points": {},
         "attempt_timeout_s": 1,
         "retry_interval_s": 0,
@@ -225,6 +227,7 @@ def test_full_run_retries_with_background_window_messages(monkeypatch):
 def test_stop_during_retry_delay_prevents_another_click(monkeypatch):
     events = []
     cfg = {
+        "connection_method": "background",
         "navigation_mode": "automatic",
         "click_points": {},
         "attempt_timeout_s": 1,
@@ -271,6 +274,7 @@ def test_rejected_server_reports_reason_and_two_second_retry(monkeypatch):
     statuses = []
     sleeps = []
     cfg = {
+        "connection_method": "background",
         "navigation_mode": "automatic",
         "click_points": {},
         "attempt_timeout_s": 20,
@@ -302,7 +306,9 @@ def test_rejected_server_reports_reason_and_two_second_retry(monkeypatch):
 def test_disconnected_outcome_retries_without_claiming_server_is_full(monkeypatch):
     statuses = []
     cfg = {
+        "connection_method": "background",
         "navigation_mode": "automatic",
+        "connection_method": "background",
         "click_points": {},
         "attempt_timeout_s": 20,
         "retry_interval_s": 0,
@@ -617,7 +623,7 @@ def test_automatic_direct_connect_ratio_targets_direct_connect_not_the_left_rent
     assert joiner.layout_point(123, "direct_connect") != rent_area_point
 
 
-def test_automatic_warm_retries_use_background_window_messages(monkeypatch):
+def test_automatic_warm_retries_use_temporary_foreground_input(monkeypatch):
     events = []
     cfg = {
         "connection_method": "automatic",
@@ -643,9 +649,9 @@ def test_automatic_warm_retries_use_background_window_messages(monkeypatch):
     monkeypatch.setattr(joiner.logwatch, "LogWatcher", BackgroundWatcher)
     monkeypatch.setattr(joiner.winput, "find_game_window", lambda _title: 123)
     monkeypatch.setattr(joiner.winput, "get_window_rect", lambda _hwnd: (0, 0, 1000, 1000))
-    monkeypatch.setattr(joiner.winput, "post_click", lambda _hwnd, x, y: events.append(("click", x, y)))
-    monkeypatch.setattr(joiner.winput, "replace_text", lambda _hwnd, text: events.append(("text", text)))
-    monkeypatch.setattr(joiner.winput, "post_key_tap", lambda _hwnd, key: events.append(("key", key)))
+    monkeypatch.setattr(joiner.winput, "foreground_click", lambda _hwnd, x, y: events.append(("click", x, y)))
+    monkeypatch.setattr(joiner.winput, "foreground_replace_text", lambda _hwnd, text: events.append(("text", text)))
+    monkeypatch.setattr(joiner.winput, "foreground_key_tap", lambda _hwnd, key: events.append(("key", key)))
     monkeypatch.setattr(joiner.notify, "notify", lambda *_args: None)
     monkeypatch.setattr(joiner.time, "sleep", lambda _seconds: None)
 
