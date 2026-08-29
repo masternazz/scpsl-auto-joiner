@@ -5,6 +5,7 @@ Python objects or executable callback strings.
 """
 import json
 import os
+import re
 import shutil
 import threading
 import time
@@ -20,7 +21,7 @@ from app_paths import app_dir
 from theme_manager import ThemeManager
 from translation_packs import PackError, PackManager
 
-APP_VERSION = "0.3.12"
+APP_VERSION = "0.3.13"
 
 
 def _translation_dir():
@@ -240,6 +241,10 @@ class WebApi:
             return {"ok": False, "error": "navigation_mode is invalid"}
         elif key == "connection_method" and value not in {"automatic", "foreground", "background", "direct"}:
             return {"ok": False, "error": "connection_method is invalid"}
+        elif key == "accent" and value not in {"violet", "amber", "slate", "cyan", "green", "red", "light", "light-warm", "light-slate", "custom"}:
+            return {"ok": False, "error": "accent is invalid"}
+        elif key == "custom_accent" and (not isinstance(value, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", value)):
+            return {"ok": False, "error": "custom_accent must be a six-digit hex color"}
         cfg = config.load_config(); cfg[key] = value; config.save_config(cfg)
         return {"ok": True, "settings": cfg}
 
@@ -314,7 +319,10 @@ class WebApi:
 
     def set_theme(self, preset):
         try:
-            return {"ok": True, "theme": self.theme_manager.set_preset(str(preset))}
+            preset = str(preset)
+            theme = self.theme_manager.set_preset(preset)
+            cfg = config.load_config(); cfg["accent"] = preset; config.save_config(cfg)
+            return {"ok": True, "theme": theme}
         except ValueError as exc:
             return {"ok": False, "error": str(exc), "theme": self.theme_manager.load()}
 

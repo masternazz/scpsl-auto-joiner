@@ -4,6 +4,7 @@ import copy
 import json
 import os
 import sys
+import tempfile
 
 from app_paths import app_dir
 
@@ -100,8 +101,18 @@ def load_config(path=None):
 
 def save_config(cfg, path=None):
     path = path or CONFIG_PATH
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
+    directory = os.path.dirname(os.path.abspath(path))
+    os.makedirs(directory, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".config-", suffix=".tmp", dir=directory, text=True)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def calibrated(cfg):

@@ -132,7 +132,7 @@ def test_webui_parity_controls_are_interactive_without_native_prompts():
               calibration:{calibrated:false,points:{}},packs:{packs:[],active_pack:null},theme:{preset:'violet'}}),
             save_server: async (n,ip,p) => ({ok:true,server:{id:'2',name:n,ip,port:p}}),
             save_group: async (n,ids,id) => ({ok:true,group:{id:id||'g1',name:n,server_ids:ids}}),
-            save_setting: async (k,v) => ({ok:true,settings:{[k]:v}}),
+            save_setting: async (k,v) => { window.savedSettings = window.savedSettings || []; window.savedSettings.push([k,v]); return {ok:true,settings:{[k]:v}}; },
             export_local_data: async () => ({ok:true,path:'export.json'}),
             reset_local_storage: async () => ({ok:true,servers:[],groups:[],settings:{},calibration:{calibrated:false,points:{}}}),
             open_translation_folder: async () => ({ok:true}),
@@ -158,6 +158,9 @@ def test_webui_parity_controls_are_interactive_without_native_prompts():
         page.wait_for_selector("#storageTools")
         page.wait_for_selector("#advancedSettings")
         page.locator("#navigationMode").select_option("manual")
+        page.locator("#accentColor").evaluate("(el) => { el.value = '#123abc'; el.dispatchEvent(new Event('input', {bubbles:true})); }")
+        page.wait_for_function("window.savedSettings?.some(([key, value]) => key === 'custom_accent' && value === '#123abc')")
+        assert page.locator("html").evaluate("el => getComputedStyle(el).getPropertyValue('--accent').trim()") == "#123abc"
         page.locator(".nav-item[data-page='packs']").click()
         page.wait_for_selector("#packLinkTools")
         page.locator("#searchPacks").click()

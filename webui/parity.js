@@ -9,7 +9,8 @@
     document.documentElement.classList.toggle('light-warm', preset === 'light-warm');
     document.documentElement.classList.toggle('light-slate', preset === 'light-slate');
     const colors = { violet: '#b186ff', amber: '#e0a458', slate: '#71b7d8', light: '#6941c6', 'light-warm': '#8a5a24', 'light-slate': '#216b89' };
-    document.documentElement.style.setProperty('--accent', colors[preset] || colors.violet);
+    const customAccent = state.settings?.accent === 'custom' ? state.settings.custom_accent : null;
+    document.documentElement.style.setProperty('--accent', customAccent || colors[preset] || colors.violet);
     let custom = document.querySelector('#storedCustomTheme');
     if (custom) custom.remove();
     const css = state.theme?.custom?.compiled;
@@ -246,7 +247,27 @@
     if (installed) return;
     installed = true;
     const oldRender = render;
-    render = () => { oldRender(); applyStoredTheme(); if (page === 'servers') { groupEditor(); addRememberControl(); } if (page === 'settings') { addStorageControls(); addSettingsParity(); } if (page === 'packs') addPackActions(); };
+    render = () => {
+      oldRender();
+      applyStoredTheme();
+      if (page === 'servers') { groupEditor(); addRememberControl(); }
+      if (page === 'settings') {
+        addStorageControls(); addSettingsParity();
+        const accent = $('#accentColor');
+        if (accent) {
+          accent.value = state.settings?.custom_accent || '#b186ff';
+          accent.oninput = async event => {
+            const value = event.target.value;
+            document.documentElement.style.setProperty('--accent', value);
+            state.settings.accent = 'custom'; state.settings.custom_accent = value;
+            await call('save_setting', 'accent', 'custom');
+            const result = await call('save_setting', 'custom_accent', value);
+            if (!result?.ok) toast(result?.error || 'Could not save accent color');
+          };
+        }
+      }
+      if (page === 'packs') addPackActions();
+    };
     const oldEvent = window.__appEvent;
     window.__appEvent = event => {
       oldEvent?.(event);
