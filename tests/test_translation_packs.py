@@ -110,3 +110,17 @@ def test_github_search_uses_api_results(monkeypatch, tmp_path):
     results = manager.search_github("SCP SL translation")
 
     assert results[0]["full_name"] == "example/pack"
+
+
+def test_pack_operations_reject_paths_outside_translations(tmp_path):
+    translations = tmp_path / "Translations"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = outside / "keep.txt"
+    marker.write_text("do not delete", encoding="utf-8")
+    manager = PackManager(tmp_path / "app", translations)
+    manager._save({"version": 1, "packs": [{"id": "evil", "name": "Bad", "folder": "..\\outside"}], "active_pack": None})
+
+    with pytest.raises(PackError, match="outside"):
+        manager.delete("evil")
+    assert marker.read_text(encoding="utf-8") == "do not delete"

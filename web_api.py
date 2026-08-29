@@ -21,7 +21,7 @@ from app_paths import app_dir
 from theme_manager import ThemeManager
 from translation_packs import PackError, PackManager
 
-APP_VERSION = "0.3.16"
+APP_VERSION = "0.3.17"
 
 
 def _translation_dir():
@@ -314,7 +314,10 @@ class WebApi:
             pack = next((item for item in self.pack_manager.load()["packs"] if item.get("id") == pack_id), None)
             if not pack:
                 return {"ok": False, "error": "pack is not installed"}
-            path = os.path.join(path, pack["folder"])
+            try:
+                path = self.pack_manager.folder_path(pack["folder"])
+            except PackError as exc:
+                return {"ok": False, "error": str(exc)}
         os.makedirs(path, exist_ok=True)
         if hasattr(os, "startfile"):
             os.startfile(path)

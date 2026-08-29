@@ -31,6 +31,14 @@ class PackManager:
         self.store_path = os.path.join(self.data_dir, "translation-packs.json")
         self.backup_dir = os.path.join(self.data_dir, "translation-backups")
 
+    def folder_path(self, folder):
+        """Resolve a managed folder without allowing traversal outside Translations."""
+        root = os.path.abspath(self.translations_dir)
+        candidate = os.path.abspath(os.path.join(root, os.fspath(folder)))
+        if os.path.commonpath((root, candidate)) != root or candidate == root:
+            raise PackError("pack folder resolves outside the Translations directory")
+        return candidate
+
     def load(self):
         if not os.path.isfile(self.store_path):
             return {"version": 1, "packs": [], "active_pack": None}
@@ -114,7 +122,7 @@ class PackManager:
                 while os.path.exists(os.path.join(self.translations_dir, folder)):
                     folder = f"{base}-custom" if index == 1 else f"{base}-custom-{index}"
                     index += 1
-            target = os.path.join(self.translations_dir, folder)
+            target = self.folder_path(folder)
             backup = None
             if os.path.isdir(target):
                 os.makedirs(self.backup_dir, exist_ok=True)
@@ -153,7 +161,7 @@ class PackManager:
         pack = next((item for item in data["packs"] if item.get("id") == pack_id), None)
         if not pack or not pack.get("backup") or not os.path.isdir(pack["backup"]):
             return False
-        target = os.path.join(self.translations_dir, pack["folder"])
+        target = self.folder_path(pack["folder"])
         if os.path.isdir(target):
             shutil.rmtree(target)
         shutil.move(pack["backup"], target)
@@ -165,7 +173,7 @@ class PackManager:
         data = self.load(); pack = next((item for item in data["packs"] if item.get("id") == pack_id), None)
         if not pack:
             return False
-        target = os.path.join(self.translations_dir, pack["folder"])
+        target = self.folder_path(pack["folder"])
         if os.path.isdir(target): shutil.rmtree(target)
         data["packs"] = [item for item in data["packs"] if item.get("id") != pack_id]
         if data.get("active_pack") == pack_id: data["active_pack"] = None
