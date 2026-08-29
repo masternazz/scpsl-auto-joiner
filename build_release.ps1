@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-$version = "0.3.19"
+$version = "0.3.20"
 $distDir = Join-Path $PSScriptRoot "dist\SCP-SL-Auto-Joiner"
 $portableZip = Join-Path $PSScriptRoot "dist\SCP-SL-Auto-Joiner-v$version-win-x64-portable.zip"
 

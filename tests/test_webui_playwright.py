@@ -7,6 +7,15 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).parents[1]
 
 
+def test_webui_boot_symbols_use_encoding_safe_markup():
+    source = (ROOT / "webui" / "index.html").read_text(encoding="utf-8")
+    assert "&#8249;" in source
+    assert "&#9776;" in source
+    assert "&hellip;" in source
+    assert "â" not in source
+    assert "Ã" not in source
+
+
 @pytest.mark.parametrize("width,height", [(800, 600), (960, 640), (1280, 720), (1920, 1080), (2560, 1440), (3840, 2160)])
 def test_webui_pages_render_without_horizontal_overflow(width, height):
     with sync_playwright() as playwright:

@@ -1,6 +1,6 @@
 #define MyAppName "SCP:SL Auto-Joiner"
 #define MyAppSafeName "SCP-SL Auto-Joiner"
-#define MyAppVersion "0.3.19"
+#define MyAppVersion "0.3.20"
 #define MyAppPublisher "MasterNazz"
 #define MyAppExeName "SCP-SL-Auto-Joiner.exe"
 
