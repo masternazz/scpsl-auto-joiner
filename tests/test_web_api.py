@@ -76,3 +76,23 @@ def test_bridge_returns_validation_errors_instead_of_raising(tmp_path, monkeypat
     assert api.activate_translation_pack("missing")["ok"] is False
     assert api.restore_translation_backup("missing")["ok"] is False
     assert api.delete_translation_pack("missing")["ok"] is False
+
+
+def test_webapi_data_dir_isolates_server_and_settings_storage(tmp_path, monkeypatch):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_servers = outside / "servers.json"
+    outside_config = outside / "config.json"
+    monkeypatch.setattr(server_store, "STORE_PATH", str(outside_servers))
+    monkeypatch.setattr(config, "CONFIG_PATH", str(outside_config))
+
+    data_dir = tmp_path / "appdata"
+    api = WebApi(data_dir=data_dir, translations_dir=data_dir / "Translations")
+    saved = api.save_server("Isolated", "127.0.0.1", 7777)
+
+    assert saved["ok"] is True
+    assert (data_dir / "servers.json").is_file()
+    assert not outside_servers.exists()
+    assert api.save_setting("max_minutes", 0)["ok"] is True
+    assert (data_dir / "config.json").is_file()
+    assert not outside_config.exists()

@@ -21,7 +21,7 @@ from app_paths import app_dir
 from theme_manager import ThemeManager
 from translation_packs import PackError, PackManager
 
-APP_VERSION = "0.3.13"
+APP_VERSION = "0.3.14"
 
 
 def _translation_dir():
@@ -34,6 +34,8 @@ def _translation_dir():
 class WebApi:
     def __init__(self, data_dir=None, translations_dir=None):
         self.data_dir = os.path.abspath(os.fspath(data_dir or app_dir()))
+        self.config_path = os.path.join(self.data_dir, "config.json")
+        self.store_path = os.path.join(self.data_dir, "servers.json")
         self.translations_dir = os.path.abspath(os.fspath(translations_dir or _translation_dir()))
         self.pack_manager = PackManager(self.data_dir, self.translations_dir)
         self.theme_manager = ThemeManager(self.data_dir)
@@ -43,6 +45,15 @@ class WebApi:
         self._remember_thread = None
         self._remember_stop = threading.Event()
 
+    def _load_config(self):
+        return config.load_config(self.config_path)
+
+    def _save_config(self, values):
+        config.save_config(values, self.config_path)
+
+    def _load_store(self):
+        return server_store.load_store(self.store_path)
+
     def set_event_sink(self, sink):
         self._sink = sink
 
@@ -51,8 +62,8 @@ class WebApi:
             self._sink({"event": event, "data": data or {}})
 
     def _state(self):
-        cfg = config.load_config()
-        store = server_store.load_store()
+        cfg = self._load_config()
+        store = self._load_store()
         return {
             "servers": store["servers"], "groups": store["groups"],
             "settings": cfg, "calibration": self.get_calibration_state()["calibration"],
@@ -64,11 +75,11 @@ class WebApi:
         return {"ok": True, "version": APP_VERSION, **self._state()}
 
     def get_servers(self, query=""):
-        return {"ok": True, "servers": server_store.search_servers(query)}
+        return {"ok": True, "servers": server_store.search_servers(query, self.store_path)}
 
     def save_server(self, name, ip, port):
         try:
-            return {"ok": True, "server": server_store.upsert_server(str(name), str(ip), int(port))}
+            return {"ok": True, "server": server_store.upsert_server(str(name), str(ip), int(port), self.store_path)}
         except (TypeError, ValueError) as exc:
             return {"ok": False, "error": str(exc)}
 
@@ -116,35 +127,35 @@ class WebApi:
 
     def rename_server(self, server_id, name):
         try:
-            store = server_store.load_store(); item = next(s for s in store["servers"] if s["id"] == server_id)
-            return {"ok": True, "server": server_store.update_server(server_id, name, item["ip"], item["port"])}
+            store = self._load_store(); item = next(s for s in store["servers"] if s["id"] == server_id)
+            return {"ok": True, "server": server_store.update_server(server_id, name, item["ip"], item["port"], self.store_path)}
         except (KeyError, TypeError, ValueError, StopIteration) as exc:
             return {"ok": False, "error": str(exc) or "saved server was not found"}
 
     def delete_server(self, server_id):
-        return {"ok": True, "deleted": server_store.delete_server(str(server_id))}
+        return {"ok": True, "deleted": server_store.delete_server(str(server_id), self.store_path)}
 
     def refresh_server_status(self, server_id):
         try:
-            store = server_store.load_store(); item = next(s for s in store["servers"] if s["id"] == server_id)
+            store = self._load_store(); item = next(s for s in store["servers"] if s["id"] == server_id)
         except StopIteration:
             return {"ok": False, "error": "saved server was not found"}
-        result = resolver.query_server(item["ip"], item["port"])
+        result = resolver.query_server(item["ip"], item["port"], path=self.store_path)
         return {"ok": True, "server": item, "status": result or {"available": False}}
 
     def get_groups(self):
-        return {"ok": True, "groups": server_store.load_store()["groups"]}
+        return {"ok": True, "groups": self._load_store()["groups"]}
 
     def save_group(self, name, server_ids, group_id=None):
         try:
-            group = (server_store.update_group(group_id, list(server_ids), name=name)
-                     if group_id else server_store.create_group(str(name), list(server_ids)))
+            group = (server_store.update_group(group_id, list(server_ids), self.store_path, name=str(name))
+                     if group_id else server_store.create_group(str(name), list(server_ids), self.store_path))
             return {"ok": True, "group": group}
         except (KeyError, TypeError, ValueError) as exc:
             return {"ok": False, "error": str(exc)}
 
     def delete_group(self, group_id):
-        return {"ok": True, "deleted": server_store.delete_group(str(group_id))}
+        return {"ok": True, "deleted": server_store.delete_group(str(group_id), self.store_path)}
 
     def start_join(self, target, target_type="server"):
         if self._join_thread and self._join_thread.is_alive():
@@ -173,7 +184,7 @@ class WebApi:
         return {"ok": True, "join": {"running": running}}
 
     def get_calibration_state(self):
-        cfg = config.load_config()
+        cfg = self._load_config()
         metadata = dict(cfg.get("calibration_metadata") or {})
         hwnd = winput.find_game_window(joiner.GAME_TITLE)
         if hwnd:
@@ -186,11 +197,11 @@ class WebApi:
         return {"ok": bool(point), "name": str(name), "point": list(point) if point else None}
 
     def save_calibration(self, points, metadata=None):
-        cfg = config.load_config()
+        cfg = self._load_config()
         cfg["click_points"].update({str(k): [int(v[0]), int(v[1])] for k, v in points.items()})
         cfg["calibration_metadata"] = dict(metadata or {})
         cfg["calibration_space"] = "physical_v2"; cfg["navigation_mode"] = "manual"
-        config.save_config(cfg)
+        self._save_config(cfg)
         self.emit("calibration_changed", self.get_calibration_state()["calibration"])
         return self.get_calibration_state()
 
@@ -202,20 +213,20 @@ class WebApi:
     def export_local_data(self):
         path = os.path.join(self.data_dir, f"scpsl-autojoin-export-{time.strftime('%Y%m%d-%H%M%S')}.json")
         with open(path, "x", encoding="utf-8") as stream:
-            json.dump({"config": config.load_config(), "servers": server_store.load_store(),
+            json.dump({"config": self._load_config(), "servers": self._load_store(),
                        "theme": self.theme_manager.load(), "packs": self.pack_manager.load()}, stream, indent=2)
         return {"ok": True, "path": path}
 
     def reset_local_storage(self):
         removed = []
-        for path in (config.CONFIG_PATH, server_store.STORE_PATH):
+        for path in (self.config_path, self.store_path):
             if os.path.isfile(path):
                 os.remove(path)
                 removed.append(path)
         return {"ok": True, "removed": removed, **self._state()}
 
     def get_settings(self):
-        return {"ok": True, "settings": config.load_config()}
+        return {"ok": True, "settings": self._load_config()}
 
     def save_setting(self, key, value):
         allowed = set(config.DEFAULTS) - {"click_points", "config_version"}
@@ -245,7 +256,7 @@ class WebApi:
             return {"ok": False, "error": "accent is invalid"}
         elif key == "custom_accent" and (not isinstance(value, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", value)):
             return {"ok": False, "error": "custom_accent must be a six-digit hex color"}
-        cfg = config.load_config(); cfg[key] = value; config.save_config(cfg)
+        cfg = self._load_config(); cfg[key] = value; self._save_config(cfg)
         return {"ok": True, "settings": cfg}
 
     def import_translation_pack(self, source, source_url=""):
@@ -321,7 +332,7 @@ class WebApi:
         try:
             preset = str(preset)
             theme = self.theme_manager.set_preset(preset)
-            cfg = config.load_config(); cfg["accent"] = preset; config.save_config(cfg)
+            cfg = self._load_config(); cfg["accent"] = preset; self._save_config(cfg)
             return {"ok": True, "theme": theme}
         except ValueError as exc:
             return {"ok": False, "error": str(exc), "theme": self.theme_manager.load()}
