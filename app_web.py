@@ -31,6 +31,20 @@ class Bridge(WebApi):
         except Exception:
             startup_trace("event delivery failed")
 
+    def pick_translation_source(self, kind="file"):
+        """Use pywebview's native picker; WebView2 does not expose local paths to JS."""
+        if not self.window:
+            return {"ok": False, "error": "The native file picker is unavailable."}
+        try:
+            import webview
+            dialog = webview.FileDialog.FOLDER if kind == "folder" else webview.FileDialog.OPEN
+            types = () if kind == "folder" else ("ZIP files (*.zip)",)
+            paths = self.window.create_file_dialog(dialog, allow_multiple=False, file_types=types)
+            return {"ok": bool(paths), "path": paths[0] if paths else None}
+        except (AttributeError, OSError, TypeError) as exc:
+            startup_trace(f"translation picker failed: {exc}")
+            return {"ok": False, "error": f"Could not open the native picker: {exc}"}
+
 
 def _show_startup_error(message):
     startup_trace(message)

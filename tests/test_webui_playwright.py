@@ -217,3 +217,28 @@ def test_light_theme_choices_persist_through_the_bridge():
         assert page.locator("html").evaluate("el => el.classList.contains('light-warm')")
         assert page.locator("html").evaluate("el => getComputedStyle(el).getPropertyValue('--accent').trim()") == "#8a5a24"
         browser.close()
+
+
+def test_translation_picker_uses_native_paths_in_webview2():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.add_init_script("""
+          window.pickerCalls = [];
+          window.importCalls = [];
+          window.pywebview = {api: {
+            get_app_state: async () => ({ok:true,servers:[],groups:[],settings:{},
+              calibration:{calibrated:false,points:{}},packs:{packs:[],active_pack:null},theme:{preset:'violet'}}),
+            pick_translation_source: async kind => { window.pickerCalls.push(kind); return {ok:true,path: kind === 'folder' ? 'C:/packs/custom' : 'C:/packs/custom.zip'}; },
+            import_translation_pack: async path => { window.importCalls.push(path); return {ok:true,packs:{packs:[],active_pack:null}}; }
+          }};
+        """)
+        page.goto((ROOT / "webui" / "index.html").as_uri())
+        page.wait_for_selector("h1")
+        page.locator(".nav-item[data-page='packs']").click()
+        page.locator("#pickPack").click()
+        page.wait_for_function("window.importCalls.includes('C:/packs/custom.zip')")
+        page.locator("#pickFolder").click()
+        page.wait_for_function("window.importCalls.includes('C:/packs/custom')")
+        assert page.evaluate("window.pickerCalls") == ["file", "folder"]
+        browser.close()
