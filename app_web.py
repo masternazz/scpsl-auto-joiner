@@ -18,30 +18,60 @@ def startup_trace(message):
         stream.write(f"{message}\n")
 
 
-class Bridge(WebApi):
-    """WebView API adapter that sends one structured event envelope."""
-    def __init__(self, window=None):
-        super().__init__()
-        self.window = window
-        self.set_event_sink(self._send_event)
+class Bridge:
+    """Small, explicit API surface exposed to WebView2.
+
+    pywebview recursively inspects every *public* attribute of ``js_api``.
+    Keeping the application service and native Window private is essential:
+    exposing either makes pywebview walk a very large object graph during
+    startup, before it can raise ``pywebviewready`` in the page.
+    """
+
+    _COMMANDS = (
+        "activate_translation_pack", "capture_calibration_point",
+        "create_bug_report", "deactivate_translation_pack", "delete_group",
+        "delete_server", "delete_translation_pack", "export_local_data",
+        "get_app_state", "get_calibration_state", "get_groups",
+        "get_join_status", "get_servers", "get_settings", "get_update_status",
+        "import_translation_pack", "install_translation_link", "install_update",
+        "open_data_folder", "open_translation_folder", "refresh_server_status",
+        "remember_server", "rename_server", "reset_local_storage", "reset_theme",
+        "restore_translation_backup", "run_input_diagnostic", "save_calibration",
+        "save_custom_theme", "save_group", "save_server", "save_setting",
+        "search_translation_packs", "set_theme", "start_join", "start_remember",
+        "stop_join", "stop_remember",
+    )
+
+    def __init__(self):
+        self._api = WebApi()
+        self._window = None
+        self._api.set_event_sink(self._send_event)
+        # Bind only the deliberate, serializable command methods. Do not
+        # subclass WebApi: its managers, paths and threads are implementation
+        # details, not JavaScript API objects.
+        for command in self._COMMANDS:
+            setattr(self, command, getattr(self._api, command))
+
+    def _attach_window(self, window):
+        self._window = window
 
     def _send_event(self, event):
-        if not self.window:
+        if not self._window:
             return
         try:
-            self.window.evaluate_js(f"window.__appEvent({json.dumps(event, ensure_ascii=False)})")
+            self._window.evaluate_js(f"window.__appEvent({json.dumps(event, ensure_ascii=False)})")
         except Exception:
             startup_trace("event delivery failed")
 
     def pick_translation_source(self, kind="file"):
         """Use pywebview's native picker; WebView2 does not expose local paths to JS."""
-        if not self.window:
+        if not self._window:
             return {"ok": False, "error": "The native file picker is unavailable."}
         try:
             import webview
             dialog = webview.FileDialog.FOLDER if kind == "folder" else webview.FileDialog.OPEN
             types = () if kind == "folder" else ("ZIP files (*.zip)",)
-            paths = self.window.create_file_dialog(dialog, allow_multiple=False, file_types=types)
+            paths = self._window.create_file_dialog(dialog, allow_multiple=False, file_types=types)
             return {"ok": bool(paths), "path": paths[0] if paths else None}
         except (AttributeError, OSError, TypeError) as exc:
             startup_trace(f"translation picker failed: {exc}")
@@ -113,16 +143,25 @@ def main():
     startup_trace("creating webview window")
     window = webview.create_window("SCP:SL // CONTAINMENT", page, js_api=bridge,
                                    width=1280, height=820, min_size=(960, 640), background_color="#0b090f")
-    bridge.window = window
+    bridge._attach_window(window)
+    # These markers distinguish an unavailable WebView2 runtime from a page
+    # loading without the Python API. They are intentionally tiny and remain
+    # useful in a packaged build where DevTools are not enabled.
+    window.events.before_load += lambda: startup_trace("webview before_load")
+    window.events._pywebviewready += lambda: startup_trace("webview api ready")
+    window.events.loaded += lambda: startup_trace("webview loaded")
     try:
         # User data is persisted by the backend in AppData. A private WebView2
         # session avoids stale or locked EBWebView profiles breaking startup.
-        webview.start(gui="edgechromium", debug=not getattr(sys, "frozen", False),
+        # Qt WebEngine is bundled with the application. It avoids pywebview's
+        # optional pythonnet/WinForms host, which can fail before WebView2 has
+        # a chance to initialise in a frozen Python application.
+        webview.start(gui="qt", debug=not getattr(sys, "frozen", False),
                       http_server=True, private_mode=True)
         return 0
     except Exception:
         startup_trace(traceback.format_exc())
-        _show_startup_error("WebView2 could not be started. Install or repair the Microsoft Edge WebView2 Runtime.\n\nSee startup-error.log in AppData for details.")
+        _show_startup_error("The desktop browser shell could not be started.\n\nSee startup-error.log in AppData for details.")
         return 1
 
 

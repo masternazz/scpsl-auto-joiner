@@ -8,6 +8,9 @@ py -3.13 -m PyInstaller --noconfirm --clean --onedir --windowed `
   --name "SCP-SL-Auto-Joiner" --icon assets\app.ico `
   --add-data "assets\app.ico;assets" `
   --add-data "assets\generated\containment-mark-purple.png;assets\generated" `
+  --hidden-import PySide6.QtWebEngineCore `
+  --hidden-import PySide6.QtWebEngineWidgets `
+  --hidden-import PySide6.QtWebChannel `
   --add-data "webui;webui" app_web.py
 
 Write-Host "Built dist\SCP-SL-Auto-Joiner\SCP-SL-Auto-Joiner.exe"

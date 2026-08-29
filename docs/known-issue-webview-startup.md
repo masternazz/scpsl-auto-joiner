@@ -1,6 +1,6 @@
 # Known issue: WebView2 startup and local bridge
 
-Status: open investigation
+Status: resolved in v0.3.23
 
 Affected area: the WebView production shell (`app_web.py`, `webui/app.js`) in the v0.3.x line.
 
@@ -54,25 +54,38 @@ Get-CimInstance Win32_Process |
   Select-Object ProcessId, ExecutablePath, CommandLine
 ```
 
+## Root cause and fix
+
+pywebview builds its JavaScript API by recursively inspecting public
+attributes on the object passed as `js_api`. The old bridge publicly exposed
+its live native window and backend managers, so pywebview walked the native
+window graph before it could raise `pywebviewready`.
+
+v0.3.23 uses a narrow bridge facade that exposes only deliberate app commands
+and the bundled Qt WebEngine host rather than the optional pythonnet/WinForms
+host. The native window, data managers, paths, and event plumbing are private.
+Startup logging now records `webview before_load`, `webview api ready`, and
+`webview loaded` so a genuine runtime failure can be identified.
+
 ## Current implementation
 
 - `app_web.py` starts pywebview with the EdgeChromium backend.
-- The Python `Bridge` object is passed as `js_api`.
+- A narrow Python `Bridge` facade is passed as `js_api`; it exposes command
+  methods only.
 - The frontend waits for `window.pywebview.api`, then calls `get_app_state()`.
 - Backend data is stored in AppData; the WebView session is private so a stale or locked browser profile cannot prevent the backend from starting.
 - A named Windows mutex prevents two copies from competing. A duplicate launch should focus the existing window and exit.
 
-## Investigation checklist
+## If a startup problem still occurs
 
 1. Confirm the executable being tested is the newly built executable, not an old desktop shortcut or an older installed copy.
 2. Confirm there is only one process and that its main window is responding.
-3. Check whether `startup-trace.log` reaches `creating webview window`.
-4. Check for `webview start failed` or a WebView2 initialization error.
+3. Check whether `startup-trace.log` reaches `webview api ready` and `webview loaded`.
+4. Check for a WebView2 initialization error.
 5. Verify the WebView2 Runtime is installed and repair it if the packaged shell cannot initialize.
 6. Test with the existing WebView profile left untouched; the application must not require deleting user data.
 7. Test a clean Windows user profile if the issue cannot be reproduced on the development machine.
-8. Use a debug build or temporary pywebview logging to confirm whether `finish.js` is injected and whether `pywebviewready` fires.
-9. Do not “fix” this by adding a long timeout or silently switching to the legacy Qt UI. A failure must be visible and diagnosable.
+8. Do not fix this by adding a long timeout or silently switching to the legacy Qt UI. A failure must be visible and diagnosable.
 
 ## Acceptance criteria for closing
 
