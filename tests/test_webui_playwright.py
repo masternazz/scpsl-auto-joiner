@@ -98,6 +98,26 @@ def test_webui_waits_for_delayed_pywebview_bridge():
         browser.close()
 
 
+def test_webui_applies_persisted_theme_and_custom_css():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.add_init_script("""
+          window.pywebview = {api: {
+            get_app_state: async () => ({ok:true,version:'0.3.7',servers:[],groups:[],settings:{},
+              calibration:{calibrated:false,points:{}},packs:{packs:[],active_pack:null},
+              theme:{preset:'light-slate',custom:{compiled:'.app-theme .panel { outline: 3px solid rgb(1, 2, 3); }'}}})
+          }};
+        """)
+        page.goto((ROOT / "webui" / "index.html").as_uri())
+        page.wait_for_selector("h1")
+        page.wait_for_selector(".boot-state", state="detached")
+        assert page.locator("html").evaluate("el => el.classList.contains('light-slate')")
+        assert page.locator("#storedCustomTheme").count() == 1
+        assert page.locator(".panel").first.evaluate("el => getComputedStyle(el).outlineStyle") == "solid"
+        browser.close()
+
+
 def test_webui_parity_controls_are_interactive_without_native_prompts():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)

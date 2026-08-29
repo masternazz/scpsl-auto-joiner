@@ -3,6 +3,24 @@
   const $ = (s, root = document) => root.querySelector(s);
   const escValue = value => String(value ?? '');
 
+  function applyStoredTheme() {
+    const preset = state.theme?.preset || 'violet';
+    document.documentElement.classList.toggle('light-mode', preset.startsWith('light'));
+    document.documentElement.classList.toggle('light-warm', preset === 'light-warm');
+    document.documentElement.classList.toggle('light-slate', preset === 'light-slate');
+    const colors = { violet: '#b186ff', amber: '#e0a458', slate: '#71b7d8', light: '#6941c6', 'light-warm': '#8a5a24', 'light-slate': '#216b89' };
+    document.documentElement.style.setProperty('--accent', colors[preset] || colors.violet);
+    let custom = document.querySelector('#storedCustomTheme');
+    if (custom) custom.remove();
+    const css = state.theme?.custom?.compiled;
+    if (css) {
+      custom = document.createElement('style');
+      custom.id = 'storedCustomTheme';
+      custom.textContent = css;
+      document.head.appendChild(custom);
+    }
+  }
+
   function form(title, fields, submit) {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
@@ -205,13 +223,22 @@
     if (restore) { event.preventDefault(); call('restore_translation_backup', restore.dataset.packRestore).then(result => { if (result?.ok) { state.packs = result.packs; render(); } }); }
   }, true);
 
-  document.addEventListener('DOMContentLoaded', () => {
+  let installed = false;
+  function installParityRender() {
+    if (installed) return;
+    installed = true;
     const oldRender = render;
-    render = () => { oldRender(); if (page === 'servers') { groupEditor(); addRememberControl(); } if (page === 'settings') addStorageControls(); if (page === 'packs') addPackActions(); };
+    render = () => { oldRender(); applyStoredTheme(); if (page === 'servers') { groupEditor(); addRememberControl(); } if (page === 'settings') addStorageControls(); if (page === 'packs') addPackActions(); };
     const oldEvent = window.__appEvent;
     window.__appEvent = event => {
       oldEvent?.(event);
       if (event?.event === 'server_detected') showDetectedServer(event.data || {});
     };
-  });
+  }
+  installParityRender();
+  // With an already-available bridge, boot can finish before the next script
+  // tag is evaluated. Re-render once in that case so parity controls and the
+  // persisted theme are applied to the actual loaded state.
+  if (state.version) render();
+  document.addEventListener('DOMContentLoaded', installParityRender);
 })();
