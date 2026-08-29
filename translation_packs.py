@@ -14,6 +14,16 @@ class PackError(ValueError):
     pass
 
 
+def _quarantine(path):
+    backup = path + ".corrupt"
+    index = 1
+    while os.path.exists(backup):
+        backup = f"{path}.corrupt.{index}"
+        index += 1
+    os.replace(path, backup)
+    return backup
+
+
 class PackManager:
     def __init__(self, data_dir, translations_dir):
         self.data_dir = os.path.abspath(os.fspath(data_dir))
@@ -27,7 +37,13 @@ class PackManager:
         try:
             with open(self.store_path, encoding="utf-8") as stream:
                 data = json.load(stream)
-        except (OSError, ValueError) as exc:
+            if not isinstance(data, dict):
+                raise ValueError("pack storage must be an object")
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError):
+            _quarantine(self.store_path)
+            data = {"version": 1, "packs": [], "active_pack": None}
+            self._save(data)
+        except OSError as exc:
             raise PackError(f"Could not read pack storage: {exc}") from exc
         return {"version": 1, "packs": list(data.get("packs", [])), "active_pack": data.get("active_pack")}
 

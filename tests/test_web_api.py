@@ -96,3 +96,17 @@ def test_webapi_data_dir_isolates_server_and_settings_storage(tmp_path, monkeypa
     assert api.save_setting("max_minutes", 0)["ok"] is True
     assert (data_dir / "config.json").is_file()
     assert not outside_config.exists()
+
+
+def test_app_state_recovers_corrupt_theme_and_pack_storage(tmp_path, monkeypatch):
+    api = make_api(tmp_path, monkeypatch)
+    (tmp_path / "themes.json").write_text('{"preset":', encoding="utf-8")
+    (tmp_path / "translation-packs.json").write_text('{"packs":', encoding="utf-8")
+
+    state = api.get_app_state()
+
+    assert state["ok"] is True
+    assert state["theme"]["preset"] == "violet"
+    assert state["packs"]["packs"] == []
+    assert list(tmp_path.glob("themes.json.corrupt*"))
+    assert list(tmp_path.glob("translation-packs.json.corrupt*"))

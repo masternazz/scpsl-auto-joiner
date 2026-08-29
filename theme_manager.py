@@ -15,6 +15,16 @@ THEMES = {
 _FORBIDDEN = re.compile(r"(@import|url\s*\(|expression\s*\(|javascript\s*:|<\s*/?\s*script|on[a-z]+\s*=)", re.I)
 
 
+def _quarantine(path):
+    backup = path + ".corrupt"
+    index = 1
+    while os.path.exists(backup):
+        backup = f"{path}.corrupt.{index}"
+        index += 1
+    os.replace(path, backup)
+    return backup
+
+
 def sanitize_css(css):
     if not isinstance(css, str) or len(css) > 100_000:
         raise ValueError("theme CSS is empty or too large")
@@ -44,8 +54,15 @@ class ThemeManager:
     def load(self):
         if not os.path.isfile(self.path):
             return {"preset": "violet", "custom": None}
-        with open(self.path, encoding="utf-8") as stream:
-            data = json.load(stream)
+        try:
+            with open(self.path, encoding="utf-8") as stream:
+                data = json.load(stream)
+            if not isinstance(data, dict):
+                raise ValueError("theme storage must be an object")
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError):
+            _quarantine(self.path)
+            data = {"preset": "violet", "custom": None}
+            self.save(data)
         return {"preset": data.get("preset", "violet"), "custom": data.get("custom")}
 
     def save(self, data):
