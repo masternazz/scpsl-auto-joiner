@@ -20,7 +20,7 @@ from app_paths import app_dir
 from theme_manager import ThemeManager
 from translation_packs import PackError, PackManager
 
-APP_VERSION = "0.3.9"
+APP_VERSION = "0.3.10"
 
 
 def _translation_dir():
@@ -66,7 +66,10 @@ class WebApi:
         return {"ok": True, "servers": server_store.search_servers(query)}
 
     def save_server(self, name, ip, port):
-        return {"ok": True, "server": server_store.upsert_server(str(name), str(ip), int(port))}
+        try:
+            return {"ok": True, "server": server_store.upsert_server(str(name), str(ip), int(port))}
+        except (TypeError, ValueError) as exc:
+            return {"ok": False, "error": str(exc)}
 
     def remember_server(self, name, ip, port):
         """Save an endpoint detected by the Player.log watcher."""
@@ -111,14 +114,20 @@ class WebApi:
         return {"ok": True}
 
     def rename_server(self, server_id, name):
-        store = server_store.load_store(); item = next(s for s in store["servers"] if s["id"] == server_id)
-        return {"ok": True, "server": server_store.update_server(server_id, name, item["ip"], item["port"])}
+        try:
+            store = server_store.load_store(); item = next(s for s in store["servers"] if s["id"] == server_id)
+            return {"ok": True, "server": server_store.update_server(server_id, name, item["ip"], item["port"])}
+        except (KeyError, TypeError, ValueError, StopIteration) as exc:
+            return {"ok": False, "error": str(exc) or "saved server was not found"}
 
     def delete_server(self, server_id):
-        return {"ok": True, "deleted": server_store.delete_server(server_id)}
+        return {"ok": True, "deleted": server_store.delete_server(str(server_id))}
 
     def refresh_server_status(self, server_id):
-        store = server_store.load_store(); item = next(s for s in store["servers"] if s["id"] == server_id)
+        try:
+            store = server_store.load_store(); item = next(s for s in store["servers"] if s["id"] == server_id)
+        except StopIteration:
+            return {"ok": False, "error": "saved server was not found"}
         result = resolver.query_server(item["ip"], item["port"])
         return {"ok": True, "server": item, "status": result or {"available": False}}
 
@@ -126,12 +135,15 @@ class WebApi:
         return {"ok": True, "groups": server_store.load_store()["groups"]}
 
     def save_group(self, name, server_ids, group_id=None):
-        group = (server_store.update_group(group_id, list(server_ids), name=name)
-                 if group_id else server_store.create_group(str(name), list(server_ids)))
-        return {"ok": True, "group": group}
+        try:
+            group = (server_store.update_group(group_id, list(server_ids), name=name)
+                     if group_id else server_store.create_group(str(name), list(server_ids)))
+            return {"ok": True, "group": group}
+        except (KeyError, TypeError, ValueError) as exc:
+            return {"ok": False, "error": str(exc)}
 
     def delete_group(self, group_id):
-        return {"ok": True, "deleted": server_store.delete_group(group_id)}
+        return {"ok": True, "deleted": server_store.delete_group(str(group_id))}
 
     def start_join(self, target, target_type="server"):
         if self._join_thread and self._join_thread.is_alive():
@@ -208,6 +220,26 @@ class WebApi:
         allowed = set(config.DEFAULTS) - {"click_points", "config_version"}
         if key not in allowed:
             return {"ok": False, "error": "setting is not editable"}
+        numeric_limits = {
+            "retry_interval_s": (0, 86400), "attempt_timeout_s": (1, 86400),
+            "max_unclear": (0, 1000), "max_attempts": (0, 1000000),
+            "max_minutes": (0, 525600), "browser_refresh_timeout_s": (1, 120),
+        }
+        if key in numeric_limits:
+            try:
+                value = int(value)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": f"{key} must be a whole number"}
+            low, high = numeric_limits[key]
+            if not low <= value <= high:
+                return {"ok": False, "error": f"{key} must be between {low} and {high}"}
+        elif key in {"group_loop", "onboarding_complete", "notifications_enabled", "mute_game_audio", "auto_update"}:
+            if not isinstance(value, bool):
+                return {"ok": False, "error": f"{key} must be true or false"}
+        elif key == "navigation_mode" and value not in {"automatic", "manual"}:
+            return {"ok": False, "error": "navigation_mode is invalid"}
+        elif key == "connection_method" and value not in {"automatic", "foreground", "background", "direct"}:
+            return {"ok": False, "error": "connection_method is invalid"}
         cfg = config.load_config(); cfg[key] = value; config.save_config(cfg)
         return {"ok": True, "settings": cfg}
 

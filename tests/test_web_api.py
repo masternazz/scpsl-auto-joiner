@@ -60,3 +60,15 @@ def test_structured_events_are_not_javascript_fragments(tmp_path, monkeypatch):
     api.set_event_sink(events.append)
     api.emit("log_line", {"message": "hello", "attempt": 1})
     assert events == [{"event": "log_line", "data": {"message": "hello", "attempt": 1}}]
+
+
+def test_bridge_returns_validation_errors_instead_of_raising(tmp_path, monkeypatch):
+    api = make_api(tmp_path, monkeypatch)
+    assert api.save_server("", "127.0.0.1", 7777)["ok"] is False
+    assert api.save_server("Bad port", "127.0.0.1", 99999)["ok"] is False
+    assert api.rename_server("missing", "Name")["ok"] is False
+    assert api.refresh_server_status("missing")["ok"] is False
+    assert api.save_group("Empty", ["missing"])["ok"] is False
+    assert api.save_setting("attempt_timeout_s", "not-a-number")["ok"] is False
+    assert api.save_setting("attempt_timeout_s", 0)["ok"] is False
+    assert api.save_setting("connection_method", "unsafe")["ok"] is False
