@@ -167,3 +167,53 @@ def test_webui_parity_controls_are_interactive_without_native_prompts():
         page.wait_for_selector("[data-repo-install]")
         assert errors == []
         browser.close()
+
+
+def test_server_row_actions_do_not_select_server_or_navigate_away():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.add_init_script("""
+          window.pywebview = {api: {
+            get_app_state: async () => ({ok:true,servers:[
+              {id:'1',name:'Private One',ip:'127.0.0.1',port:7777},
+              {id:'2',name:'Private Two',ip:'127.0.0.2',port:7778}],groups:[],
+              settings:{},calibration:{calibrated:false,points:{}},packs:{packs:[],active_pack:null},theme:{preset:'violet'}}),
+            refresh_server_status: async () => ({ok:true,status:{players:1,max_players:20,latency_ms:4}})
+          }};
+        """)
+        page.goto((ROOT / "webui" / "index.html").as_uri())
+        page.wait_for_selector("h1")
+        page.locator(".nav-item[data-page='servers']").click()
+        page.wait_for_selector("[data-refresh]")
+        page.locator("[data-server='2']").evaluate("el => el.onclick()")
+        assert page.locator("h1").inner_text() == "Auto-Join"
+        page.locator(".nav-item[data-page='servers']").click()
+        page.wait_for_selector("[data-refresh]")
+        page.locator("[data-refresh]").first.click()
+        assert page.locator("h1").inner_text() == "Servers"
+        page.locator("[data-server='2'] main").click()
+        assert page.locator("h1").inner_text() == "Auto-Join"
+        browser.close()
+
+
+def test_light_theme_choices_persist_through_the_bridge():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.add_init_script("""
+          window.themeCalls = [];
+          window.pywebview = {api: {
+            get_app_state: async () => ({ok:true,servers:[],groups:[],settings:{},
+              calibration:{calibrated:false,points:{}},packs:{packs:[],active_pack:null},theme:{preset:'violet'}}),
+            set_theme: async preset => { window.themeCalls.push(preset); return {ok:true,theme:{preset:preset,custom:null}}; }
+          }};
+        """)
+        page.goto((ROOT / "webui" / "index.html").as_uri())
+        page.wait_for_selector("h1")
+        page.locator(".nav-item[data-page='settings']").click()
+        page.locator('[data-theme="light-warm"]').click()
+        page.wait_for_function("window.themeCalls.includes('light-warm')")
+        assert page.locator("html").evaluate("el => el.classList.contains('light-warm')")
+        assert page.locator("html").evaluate("el => getComputedStyle(el).getPropertyValue('--accent').trim()") == "#8a5a24"
+        browser.close()
