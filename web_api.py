@@ -20,7 +20,7 @@ from app_paths import app_dir
 from theme_manager import ThemeManager
 from translation_packs import PackError, PackManager
 
-APP_VERSION = "0.3.11"
+APP_VERSION = "0.3.12"
 
 
 def _translation_dir():
