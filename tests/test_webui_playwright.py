@@ -107,6 +107,24 @@ def test_webui_waits_for_delayed_pywebview_bridge():
         browser.close()
 
 
+def test_webui_accepts_bridge_that_is_ready_before_boot_listener():
+    """A fast WebView2 handshake must not be missed by the boot code."""
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.add_init_script("""
+          window.pywebview = {api: {
+            get_app_state: async () => ({ok:true,version:'0.3.21',servers:[],groups:[],settings:{},
+              calibration:{calibrated:false,points:{}},packs:{packs:[],active_pack:null},theme:{preset:'violet'}})
+          }};
+        """)
+        page.goto((ROOT / "webui" / "index.html").as_uri())
+        page.wait_for_selector("h1")
+        assert page.locator("h1").inner_text() == "Auto-Join"
+        assert page.locator(".boot-state").count() == 0
+        browser.close()
+
+
 def test_webui_applies_persisted_theme_and_custom_css():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
