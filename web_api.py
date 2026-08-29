@@ -20,7 +20,7 @@ from app_paths import app_dir
 from theme_manager import ThemeManager
 from translation_packs import PackError, PackManager
 
-APP_VERSION = "0.3.10"
+APP_VERSION = "0.3.11"
 
 
 def _translation_dir():
@@ -266,16 +266,31 @@ class WebApi:
             return {"ok": False, "error": str(exc)}
 
     def activate_translation_pack(self, pack_id):
-        return {"ok": True, "packs": self.pack_manager.activate(pack_id)}
+        try:
+            return {"ok": True, "packs": self.pack_manager.activate(str(pack_id))}
+        except (PackError, OSError, ValueError) as exc:
+            return {"ok": False, "error": str(exc), "packs": self.pack_manager.load()}
 
     def deactivate_translation_pack(self):
         return {"ok": True, "packs": self.pack_manager.deactivate()}
 
     def restore_translation_backup(self, pack_id):
-        return {"ok": True, "restored": self.pack_manager.restore(pack_id), "packs": self.pack_manager.load()}
+        try:
+            restored = self.pack_manager.restore(str(pack_id))
+            return {"ok": bool(restored), "restored": bool(restored),
+                    "error": None if restored else "no backup exists for this pack",
+                    "packs": self.pack_manager.load()}
+        except (PackError, OSError, ValueError) as exc:
+            return {"ok": False, "error": str(exc), "packs": self.pack_manager.load()}
 
     def delete_translation_pack(self, pack_id):
-        return {"ok": True, "deleted": self.pack_manager.delete(pack_id), "packs": self.pack_manager.load()}
+        try:
+            deleted = self.pack_manager.delete(str(pack_id))
+            return {"ok": bool(deleted), "deleted": bool(deleted),
+                    "error": None if deleted else "pack is not installed",
+                    "packs": self.pack_manager.load()}
+        except (PackError, OSError, ValueError) as exc:
+            return {"ok": False, "error": str(exc), "packs": self.pack_manager.load()}
 
     def open_translation_folder(self, pack_id=None):
         path = self.pack_manager.translations_dir
@@ -298,7 +313,10 @@ class WebApi:
         except ValueError as exc: return {"ok": False, "error": str(exc)}
 
     def set_theme(self, preset):
-        return {"ok": True, "theme": self.theme_manager.set_preset(preset)}
+        try:
+            return {"ok": True, "theme": self.theme_manager.set_preset(str(preset))}
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc), "theme": self.theme_manager.load()}
 
     def reset_theme(self):
         return {"ok": True, "theme": self.theme_manager.reset()}

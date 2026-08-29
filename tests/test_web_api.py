@@ -72,3 +72,7 @@ def test_bridge_returns_validation_errors_instead_of_raising(tmp_path, monkeypat
     assert api.save_setting("attempt_timeout_s", "not-a-number")["ok"] is False
     assert api.save_setting("attempt_timeout_s", 0)["ok"] is False
     assert api.save_setting("connection_method", "unsafe")["ok"] is False
+    assert api.set_theme("not-a-theme")["ok"] is False
+    assert api.activate_translation_pack("missing")["ok"] is False
+    assert api.restore_translation_backup("missing")["ok"] is False
+    assert api.delete_translation_pack("missing")["ok"] is False
