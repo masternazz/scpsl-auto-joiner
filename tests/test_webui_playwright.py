@@ -39,6 +39,8 @@ def test_webui_pages_render_without_horizontal_overflow(width, height):
             assert page.locator("body").evaluate("document.documentElement.scrollWidth") <= width
             assert page.locator(".content").evaluate("el => el.scrollHeight >= el.clientHeight")
             if target == "settings":
+                assert page.locator("#audioTools").count() == 1
+                assert page.locator('[data-setting="mute_game_audio"]').count() == 1
                 assert page.locator("#accentColor").count() == 1
                 assert page.locator("#themeEditor").count() == 1
                 assert page.locator("#customThemeCss").count() == 0
@@ -73,4 +75,67 @@ def test_webui_pages_render_without_horizontal_overflow(width, height):
             if target == "docs":
                 assert "Custom CSS" in page.locator(".content").inner_text()
                 assert "Accent color" in page.locator(".content").inner_text()
+        browser.close()
+
+
+def test_webui_waits_for_delayed_pywebview_bridge():
+    """The real WebView bridge arrives after the document script sometimes."""
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.goto((ROOT / "webui" / "index.html").as_uri())
+        assert page.locator(".boot-state").is_visible()
+        page.evaluate("""
+          window.pywebview = {api: {
+            get_app_state: async () => ({ok:true,servers:[],groups:[],settings:{},
+              calibration:{calibrated:false,points:{}},packs:{packs:[],active_pack:null},theme:{preset:'violet'}})
+          }};
+          window.dispatchEvent(new Event('pywebviewready'));
+        """)
+        page.wait_for_selector("h1")
+        assert page.locator("h1").inner_text() == "Auto-Join"
+        assert page.locator(".boot-state").count() == 0
+        browser.close()
+
+
+def test_webui_parity_controls_are_interactive_without_native_prompts():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.on("dialog", lambda dialog: (errors.append(f"native dialog: {dialog.type}"), dialog.dismiss()))
+        page.add_init_script("""
+          window.pywebview = {api: {
+            get_app_state: async () => ({ok:true,servers:[{id:'1',name:'Private',ip:'127.0.0.1',port:7777}],groups:[],
+              settings:{retry_interval_s:2,max_attempts:0,max_minutes:0,connection_method:'automatic',mute_game_audio:false},
+              calibration:{calibrated:false,points:{}},packs:{packs:[],active_pack:null},theme:{preset:'violet'}}),
+            save_server: async (n,ip,p) => ({ok:true,server:{id:'2',name:n,ip,port:p}}),
+            save_group: async (n,ids,id) => ({ok:true,group:{id:id||'g1',name:n,server_ids:ids}}),
+            save_setting: async (k,v) => ({ok:true,settings:{[k]:v}}),
+            export_local_data: async () => ({ok:true,path:'export.json'}),
+            reset_local_storage: async () => ({ok:true,servers:[],groups:[],settings:{},calibration:{calibrated:false,points:{}}}),
+            open_translation_folder: async () => ({ok:true}),
+            restore_translation_backup: async () => ({ok:true,packs:{packs:[],active_pack:null}})
+          }};
+        """)
+        page.goto((ROOT / "webui" / "index.html").as_uri())
+        page.wait_for_selector("h1")
+        page.locator(".nav-item[data-page='servers']").click()
+        page.wait_for_selector("#groupEditor")
+        page.locator("#addServer").click()
+        page.wait_for_selector(".form-modal")
+        assert page.locator(".form-modal h2").inner_text() == "Add saved server"
+        page.locator("[data-form-cancel]").click()
+        page.locator("#addGroup").click()
+        assert page.locator(".form-modal h2").inner_text() == "Create server group"
+        page.locator("[data-form-cancel]").click()
+        page.locator("[data-rename]").first.click()
+        assert page.locator(".form-modal h2").inner_text() == "Rename saved server"
+        page.locator("[data-form-cancel]").click()
+        page.locator(".nav-item[data-page='settings']").click()
+        page.wait_for_selector("#storageTools")
+        page.locator(".nav-item[data-page='packs']").click()
+        page.wait_for_selector("#packLinkTools")
+        assert errors == []
         browser.close()

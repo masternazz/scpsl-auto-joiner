@@ -5,12 +5,14 @@ Python objects or executable callback strings.
 """
 import json
 import os
+import shutil
 import threading
 import time
 import webbrowser
 
 import config
 import joiner
+import logwatch
 import resolver
 import server_store
 import winput
@@ -18,7 +20,7 @@ from app_paths import app_dir
 from theme_manager import ThemeManager
 from translation_packs import PackError, PackManager
 
-APP_VERSION = "0.3.6"
+APP_VERSION = "0.3.7"
 
 
 def _translation_dir():
@@ -37,6 +39,8 @@ class WebApi:
         self._sink = None
         self._join_thread = None
         self._join_stop = threading.Event()
+        self._remember_thread = None
+        self._remember_stop = threading.Event()
 
     def set_event_sink(self, sink):
         self._sink = sink
@@ -63,6 +67,48 @@ class WebApi:
 
     def save_server(self, name, ip, port):
         return {"ok": True, "server": server_store.upsert_server(str(name), str(ip), int(port))}
+
+    def remember_server(self, name, ip, port):
+        """Save an endpoint detected by the Player.log watcher."""
+        return self.save_server(name, ip, port)
+
+    def start_remember(self):
+        """Watch the client log for the next connection and report its endpoint.
+
+        The watcher is asynchronous so the WebView remains responsive while
+        the user joins normally in SCP:SL.
+        """
+        if self._remember_thread and self._remember_thread.is_alive():
+            return {"ok": False, "error": "already watching for a connection"}
+        self._remember_stop.clear()
+        self._remember_thread = threading.Thread(target=self._remember_worker, daemon=True)
+        self._remember_thread.start()
+        self.emit("status_changed", {"message": "Watching Player.log for your next SCP:SL connection..."})
+        return {"ok": True}
+
+    def _remember_worker(self):
+        watcher = None
+        try:
+            watcher = logwatch.LogWatcher()
+            match = watcher.wait_for_regex(
+                logwatch.CONNECTING_IP_RE, 120, stop_event=self._remember_stop
+            )
+            if not match:
+                if not self._remember_stop.is_set():
+                    self.emit("status_changed", {"message": "Timed out waiting for a connection attempt."})
+                return
+            ip, port = match.group(1), int(match.group(2))
+            name = resolver.query_server_name(ip, port) or ""
+            self.emit("server_detected", {"ip": ip, "port": port, "name": name})
+        except Exception as exc:
+            self.emit("status_changed", {"message": f"Could not read the SCP:SL log: {exc}"})
+        finally:
+            if watcher:
+                watcher.close()
+
+    def stop_remember(self):
+        self._remember_stop.set()
+        return {"ok": True}
 
     def rename_server(self, server_id, name):
         store = server_store.load_store(); item = next(s for s in store["servers"] if s["id"] == server_id)
@@ -140,6 +186,21 @@ class WebApi:
         rect = winput.get_client_rect(hwnd) if hwnd else None
         return {"ok": True, "game_detected": bool(hwnd), "client_rect": list(rect) if rect else None, "dpi": winput.get_window_dpi(hwnd) if hwnd else None}
 
+    def export_local_data(self):
+        path = os.path.join(self.data_dir, f"scpsl-autojoin-export-{time.strftime('%Y%m%d-%H%M%S')}.json")
+        with open(path, "x", encoding="utf-8") as stream:
+            json.dump({"config": config.load_config(), "servers": server_store.load_store(),
+                       "theme": self.theme_manager.load(), "packs": self.pack_manager.load()}, stream, indent=2)
+        return {"ok": True, "path": path}
+
+    def reset_local_storage(self):
+        removed = []
+        for path in (config.CONFIG_PATH, server_store.STORE_PATH):
+            if os.path.isfile(path):
+                os.remove(path)
+                removed.append(path)
+        return {"ok": True, "removed": removed, **self._state()}
+
     def get_settings(self):
         return {"ok": True, "settings": config.load_config()}
 
@@ -183,6 +244,20 @@ class WebApi:
 
     def delete_translation_pack(self, pack_id):
         return {"ok": True, "deleted": self.pack_manager.delete(pack_id), "packs": self.pack_manager.load()}
+
+    def open_translation_folder(self, pack_id=None):
+        path = self.pack_manager.translations_dir
+        if pack_id:
+            pack = next((item for item in self.pack_manager.load()["packs"] if item.get("id") == pack_id), None)
+            if not pack:
+                return {"ok": False, "error": "pack is not installed"}
+            path = os.path.join(path, pack["folder"])
+        os.makedirs(path, exist_ok=True)
+        if hasattr(os, "startfile"):
+            os.startfile(path)
+        else:
+            webbrowser.open(path)
+        return {"ok": True, "path": path}
 
     def save_custom_theme(self, filename, css):
         try:

@@ -16,6 +16,7 @@ import resolver
 import server_store
 import transport
 import winput
+import audio_control
 from app_paths import app_dir
 
 GAME_TITLE = "SCP: Secret Laboratory"
@@ -429,6 +430,7 @@ def run_group(group_id, on_status=None, stop_event=None):
         return "already_running"
 
     watcher = None
+    audio = None
     try:
         group = _saved_group(group_id)
         if group is None:
@@ -444,6 +446,7 @@ def run_group(group_id, on_status=None, stop_event=None):
 
         winput.set_dpi_awareness()
         cfg = config_mod.load_config()
+        audio = audio_control.start_for_run(cfg.get("mute_game_audio", False), status)
         watcher = logwatch.LogWatcher()
         hwnd = winput.find_game_window(GAME_TITLE)
         # Automatic mode follows the recorded client flow even on a cold
@@ -547,6 +550,8 @@ def run_group(group_id, on_status=None, stop_event=None):
         notify.notify(APP_NAME, "Auto-joiner crashed; check autojoiner.log.")
         return "unclear"
     finally:
+        if audio is not None:
+            audio.stop()
         if watcher is not None:
             watcher.close()
         _RUN_LOCK.release()
@@ -564,6 +569,7 @@ def run(server_name, on_status=None, stop_event=None):
         return "already_running"
 
     watcher = None
+    audio = None
     try:
         # The GUI sets this at import time, but the joiner is also used by
         # tests and direct CLI/debug launches.  Without per-monitor DPI
@@ -571,6 +577,7 @@ def run(server_name, on_status=None, stop_event=None):
         # 4K borderless window receives clicks at 1080p-scaled positions.
         winput.set_dpi_awareness()
         cfg = config_mod.load_config()
+        audio = audio_control.start_for_run(cfg.get("mute_game_audio", False), status)
         match = resolver.resolve(server_name)
         if match is None:
             notify.notify(APP_NAME, f"No saved server matches '{server_name}'. Use Remember a server first.")
@@ -680,6 +687,8 @@ def run(server_name, on_status=None, stop_event=None):
         notify.notify(APP_NAME, "Auto-joiner crashed; check autojoiner.log.")
         return "unclear"
     finally:
+        if audio is not None:
+            audio.stop()
         if watcher is not None:
             watcher.close()
         _RUN_LOCK.release()

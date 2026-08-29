@@ -23,6 +23,7 @@ def test_bridge_exposes_structured_app_state_and_server_operations(tmp_path, mon
     assert state["ok"] is True
     assert state["servers"][0]["ip"] == "127.0.0.1"
     assert "settings" in state and "calibration" in state
+    assert state["settings"]["mute_game_audio"] is False
 
     renamed = api.rename_server(saved["server"]["id"], "Home")
     assert renamed["server"]["name"] == "Home"
@@ -37,6 +38,7 @@ def test_bridge_group_and_settings_persist(tmp_path, monkeypatch):
 
     assert api.get_groups()["groups"][0]["name"] == "Queue"
     assert api.save_setting("max_minutes", 0)["settings"]["max_minutes"] == 0
+    assert api.save_setting("mute_game_audio", True)["settings"]["mute_game_audio"] is True
     assert api.delete_group(group["id"])["deleted"] is True
 
 

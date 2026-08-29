@@ -6,6 +6,7 @@
 
 /* Quiet, high-contrast scrollbar for the content pane and live logs. */
 .content,.log{scrollbar-width:thin;scrollbar-color:var(--accent) #100d15}
+.boot-state{max-width:620px;margin:12vh auto 0;padding:38px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow)}.boot-mark{display:grid;place-items:center;width:42px;height:42px;border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-weight:800;font-size:22px;margin-bottom:24px}.boot-state h1{margin:0 0 8px;font-size:clamp(24px,3vw,38px);letter-spacing:-.04em}.boot-state p{color:var(--muted);margin:0}.boot-progress{height:4px;background:#100d15;border-radius:999px;overflow:hidden;margin-top:28px}.boot-progress i{display:block;width:35%;height:100%;background:var(--accent);border-radius:inherit;animation:boot-progress 1.3s ease-in-out infinite}@keyframes boot-progress{0%{transform:translateX(-120%)}100%{transform:translateX(360%)}}.boot-state.error{border-color:var(--red)}.boot-state.error .boot-mark{border-color:var(--red);color:var(--red)}.boot-state.error .boot-progress{display:none}.boot-state .button{margin-top:24px}
 .content::-webkit-scrollbar,.log::-webkit-scrollbar{width:10px;height:10px}
 .content::-webkit-scrollbar-track,.log::-webkit-scrollbar-track{background:#100d15;border-left:1px solid #2c2238}
 .content::-webkit-scrollbar-thumb,.log::-webkit-scrollbar-thumb{background:#6f5198;border:2px solid #100d15;border-radius:999px}

@@ -2,3 +2,4 @@ win11toast
 pytest
 pywebview
 PySide6
+pycaw

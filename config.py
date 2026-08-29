@@ -18,6 +18,7 @@ DEFAULTS = {
     "browser_refresh_timeout_s": 2,
     "onboarding_complete": False,
     "notifications_enabled": True,
+    "mute_game_audio": False,
     # Qt 6 reports cursor positions in DPI-scaled logical pixels. Version 2
     # calibration records native Win32 physical pixels so the coordinates
     # match GetWindowRect/SendInput on 4K displays.
