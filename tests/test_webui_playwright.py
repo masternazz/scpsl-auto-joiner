@@ -137,6 +137,7 @@ def test_webui_parity_controls_are_interactive_without_native_prompts():
             reset_local_storage: async () => ({ok:true,servers:[],groups:[],settings:{},calibration:{calibrated:false,points:{}}}),
             open_translation_folder: async () => ({ok:true}),
             restore_translation_backup: async () => ({ok:true,packs:{packs:[],active_pack:null}})
+            ,search_translation_packs: async () => ({ok:true,results:[{full_name:'owner/pack',html_url:'https://github.com/owner/pack',description:'Test pack',updated_at:'2026-08-28'}]})
           }};
         """)
         page.goto((ROOT / "webui" / "index.html").as_uri())
@@ -155,7 +156,11 @@ def test_webui_parity_controls_are_interactive_without_native_prompts():
         page.locator("[data-form-cancel]").click()
         page.locator(".nav-item[data-page='settings']").click()
         page.wait_for_selector("#storageTools")
+        page.wait_for_selector("#advancedSettings")
+        page.locator("#navigationMode").select_option("manual")
         page.locator(".nav-item[data-page='packs']").click()
         page.wait_for_selector("#packLinkTools")
+        page.locator("#searchPacks").click()
+        page.wait_for_selector("[data-repo-install]")
         assert errors == []
         browser.close()

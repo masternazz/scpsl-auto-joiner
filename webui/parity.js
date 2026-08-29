@@ -129,12 +129,30 @@
     tools.innerHTML = '<label for="packLink">INSTALL FROM LINK</label><div class="actions"><input class="input" id="packLink" placeholder="GitHub repository or direct ZIP URL"><button class="button" id="installPackLink">Install link</button></div>';
     panel.appendChild(tools);
     $('#installPackLink').onclick = async () => { const url = $('#packLink').value.trim(); if (!url) return; const result = await call('install_translation_link', url); if (result?.ok) { state.packs = result.packs; toast('Translation pack installed'); render(); } else toast(result?.error || 'Could not install pack'); };
+    $('#searchPacks').onclick = async () => {
+      const query = $('#packSearch').value.trim() || 'SCP:SL translation';
+      const result = await call('search_translation_packs', query);
+      const results = result?.results || [];
+      $('#packResults').innerHTML = results.length ? '<div class="label">SEARCH RESULTS</div><div class="table-list">' + results.map(item => '<div class="table-item"><span><strong>'+esc(item.full_name || 'Repository')+'</strong><small>'+esc(item.description || 'No description')+' · updated '+esc(item.updated_at || 'unknown')+'</small></span><a class="button" href="'+esc(item.html_url || '#')+'" target="_blank" rel="noreferrer">Source</a><button class="button primary" data-repo-install="'+esc(item.html_url || '')+'">Install</button></div>').join('') + '</div>' : '<div class="empty">No translation repositories found.</div>';
+      document.querySelectorAll('[data-repo-install]').forEach(button => { button.onclick = async () => { const installed = await call('install_translation_link', button.dataset.repoInstall); if (installed?.ok) { state.packs = installed.packs; toast('Translation pack installed'); render(); } else toast(installed?.error || 'Could not install pack'); }; });
+    };
     document.querySelectorAll('[data-pack-delete]').forEach(button => {
       const row = button.closest('.table-item');
       if (!row || row.querySelector('[data-pack-open]')) return;
       const id = button.dataset.packDelete;
       row.insertAdjacentHTML('beforeend', '<button class="button" data-pack-open="'+esc(id)+'">Open folder</button><button class="button" data-pack-restore="'+esc(id)+'">Restore backup</button>');
     });
+  }
+
+  function addSettingsParity() {
+    const panel = page === 'settings' ? $('.settings .panel') : null;
+    if (!panel || $('#advancedSettings')) return;
+    const box = document.createElement('div'); box.id = 'advancedSettings'; box.className = 'settings-advanced';
+    box.innerHTML = '<div class="label">COMPATIBILITY & NOTIFICATIONS</div><div class="setting-row"><div><strong>Navigation mode</strong><small>Automatic scales to the live game window. Manual uses saved calibration.</small></div><select class="input" id="navigationMode"><option value="automatic">Automatic scaling</option><option value="manual">Saved calibration</option></select></div><div class="setting-row"><div><strong>Connection timeout</strong><small>Seconds allowed for one attempt.</small></div><input class="input" id="attemptTimeout" type="number" min="1"></div><div class="setting-row"><div><strong>Unclear-result limit</strong><small>Stop after this many ambiguous attempts.</small></div><input class="input" id="maxUnclear" type="number" min="0"></div><div class="setting-row"><div><strong>Server refresh timeout</strong><small>Seconds allowed for a status query.</small></div><input class="input" id="browserRefreshTimeout" type="number" min="1"></div><div class="setting-row"><div><strong>Group looping</strong><small>After the last server, return to the first one.</small></div><label class="toggle"><input type="checkbox" id="groupLoop"><span>Loop groups</span></label></div><div class="setting-row"><div><strong>Windows notifications</strong><small>Allow completion and failure notifications.</small></div><label class="toggle"><input type="checkbox" id="notificationsEnabled"><span>Notifications</span></label></div><div class="setting-row"><div><strong>Automatic updates</strong><small>Allow the app to offer verified GitHub releases.</small></div><label class="toggle"><input type="checkbox" id="autoUpdate"><span>Offer updates</span></label></div><div class="actions"><button class="button" id="openDataFolder">Open AppData folder</button></div>';
+    panel.appendChild(box);
+    const values = [['navigationMode', 'navigation_mode', state.settings.navigation_mode || 'automatic'], ['attemptTimeout', 'attempt_timeout_s', state.settings.attempt_timeout_s ?? 20], ['maxUnclear', 'max_unclear', state.settings.max_unclear ?? 3], ['browserRefreshTimeout', 'browser_refresh_timeout_s', state.settings.browser_refresh_timeout_s ?? 2], ['groupLoop', 'group_loop', !!state.settings.group_loop], ['notificationsEnabled', 'notifications_enabled', state.settings.notifications_enabled !== false], ['autoUpdate', 'auto_update', !!state.settings.auto_update]];
+    values.forEach(([id, key, value]) => { const control = $('#'+id); if (control.type === 'checkbox') control.checked = value; else control.value = value; control.onchange = async () => { const next = control.type === 'checkbox' ? control.checked : (control.type === 'number' ? Number(control.value) : control.value); const result = await call('save_setting', key, next); if (result?.settings) state.settings = result.settings; else toast(result?.error || 'Could not save setting'); }; });
+    $('#openDataFolder').onclick = () => call('open_data_folder');
   }
 
   function addRememberControl() {
@@ -228,7 +246,7 @@
     if (installed) return;
     installed = true;
     const oldRender = render;
-    render = () => { oldRender(); applyStoredTheme(); if (page === 'servers') { groupEditor(); addRememberControl(); } if (page === 'settings') addStorageControls(); if (page === 'packs') addPackActions(); };
+    render = () => { oldRender(); applyStoredTheme(); if (page === 'servers') { groupEditor(); addRememberControl(); } if (page === 'settings') { addStorageControls(); addSettingsParity(); } if (page === 'packs') addPackActions(); };
     const oldEvent = window.__appEvent;
     window.__appEvent = event => {
       oldEvent?.(event);
