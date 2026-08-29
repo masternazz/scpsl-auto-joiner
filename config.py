@@ -48,6 +48,16 @@ DEFAULTS = {
 REQUIRED_CLICK_POINTS = ("servers_tab", "direct_connect", "ip_field", "connect_button")
 
 
+def _quarantine(path):
+    backup = path + ".corrupt"
+    index = 1
+    while os.path.exists(backup):
+        backup = f"{path}.corrupt.{index}"
+        index += 1
+    os.replace(path, backup)
+    return backup
+
+
 def load_config(path=None):
     path = path or CONFIG_PATH
     if not os.path.exists(path):
@@ -73,8 +83,15 @@ def load_config(path=None):
                     pass
         save_config(DEFAULTS, path)
         return copy.deepcopy(DEFAULTS)
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError("config must be an object")
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError):
+        _quarantine(path)
+        save_config(DEFAULTS, path)
+        return copy.deepcopy(DEFAULTS)
     merged = copy.deepcopy(DEFAULTS)
     # Update top-level keys except click_points (which needs dict merging)
     for key, value in data.items():

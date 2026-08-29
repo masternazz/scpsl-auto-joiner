@@ -14,6 +14,15 @@ def test_missing_store_has_versioned_shape(tmp_path):
     assert server_store.load_store(path) == {"version": 1, "servers": [], "groups": []}
 
 
+def test_malformed_store_is_quarantined_and_recovered(tmp_path):
+    path = tmp_path / "servers.json"
+    path.write_text('{"version": 1, "servers":', encoding="utf-8")
+
+    assert server_store.load_store(str(path)) == {"version": 1, "servers": [], "groups": []}
+    assert path.is_file()
+    assert list(tmp_path.glob("servers.json.corrupt*"))
+
+
 def test_legacy_servers_migrate_with_stable_ids(tmp_path):
     path = str(tmp_path / "servers.json")
     with open(path, "w", encoding="utf-8") as stream:

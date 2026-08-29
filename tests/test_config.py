@@ -14,6 +14,17 @@ def test_load_config_creates_defaults_when_missing(tmp_path):
     assert cfg["click_points"]["play"] == [0, 0]
 
 
+def test_load_config_quarantines_malformed_json_and_recovers_defaults(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text('{"retry_interval_s":', encoding="utf-8")
+
+    cfg = config_mod.load_config(str(path))
+
+    assert cfg["retry_interval_s"] == 2
+    assert path.is_file()
+    assert list(tmp_path.glob("config.json.corrupt*"))
+
+
 def test_load_config_merges_saved_values(tmp_path):
     path = str(tmp_path / "config.json")
     config_mod.save_config(

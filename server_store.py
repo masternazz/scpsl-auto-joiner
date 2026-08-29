@@ -22,6 +22,16 @@ def _empty_store():
     return {"version": STORE_VERSION, "servers": [], "groups": []}
 
 
+def _quarantine(path):
+    backup = path + ".corrupt"
+    index = 1
+    while os.path.exists(backup):
+        backup = f"{path}.corrupt.{index}"
+        index += 1
+    os.replace(path, backup)
+    return backup
+
+
 def _validate_endpoint(ip, port):
     if not isinstance(ip, str) or not ip.strip() or any(char in ip for char in "\r\n\x00"):
         raise ValueError("invalid endpoint")
@@ -100,8 +110,15 @@ def load_store(path=None):
     path = _path(path)
     if not os.path.exists(path):
         return _empty_store()
-    with open(path, encoding="utf-8") as stream:
-        original = json.load(stream)
+    try:
+        with open(path, encoding="utf-8") as stream:
+            original = json.load(stream)
+        if not isinstance(original, dict):
+            raise ValueError("store must be an object")
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError):
+        _quarantine(path)
+        save_store(_empty_store(), path)
+        return _empty_store()
     store = _migrate(original)
     if not (isinstance(original, dict) and original.get("version") == STORE_VERSION):
         save_store(store, path)
