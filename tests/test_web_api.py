@@ -42,6 +42,21 @@ def test_bridge_group_and_settings_persist(tmp_path, monkeypatch):
     assert api.delete_group(group["id"])["deleted"] is True
 
 
+def test_start_join_resolves_a_saved_server_id_to_its_name(tmp_path, monkeypatch):
+    api = make_api(tmp_path, monkeypatch)
+    saved = api.save_server("Private", "127.0.0.1", 7777)["server"]
+    received = []
+
+    def fake_run(target, on_status=None, stop_event=None):
+        received.append(target)
+        return "stopped"
+
+    monkeypatch.setattr("web_api.joiner.run", fake_run)
+    assert api.start_join(saved["id"]) == {"ok": True}
+    api._join_thread.join(timeout=1)
+    assert received == ["Private"]
+
+
 def test_custom_theme_is_scoped_and_rejects_active_content(tmp_path, monkeypatch):
     api = make_api(tmp_path, monkeypatch)
     good = api.save_custom_theme("field.css", ".app-shell { --accent: #b186ff; }")

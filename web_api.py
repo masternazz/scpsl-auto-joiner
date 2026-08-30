@@ -262,7 +262,12 @@ class WebApi:
         if target_type == "server":
             self.update_discord_presence("connecting", str(target))
         runner = joiner.run_group if target_type == "group" else joiner.run
-        self._join_thread = threading.Thread(target=self._run_join, args=(runner, target), daemon=True)
+        runner_target = target
+        if target_type == "server":
+            server = next((item for item in self._load_store()["servers"] if item["id"] == str(target)), None)
+            if server:
+                runner_target = server["name"]
+        self._join_thread = threading.Thread(target=self._run_join, args=(runner, runner_target), daemon=True)
         self._join_thread.start()
         return {"ok": True}
 
