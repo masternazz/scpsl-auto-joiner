@@ -1,162 +1,156 @@
-# SCP:SL Auto-Joiner
+<p align="center">
+  <img src="assets/generated/readme-hero.png" alt="SCP:SL Auto-Joiner - Find the slot. Take the connection." width="100%">
+</p>
 
-A Windows utility that keeps trying to join a configured SCP: Secret Laboratory server until a slot opens.
+<p align="center">
+  A local Windows tool for watching saved SCP: Secret Laboratory servers, then joining when you are ready to try.
+</p>
 
-![SCP:SL Auto-Joiner](assets/generated/github-banner-purple.png)
+<p align="center">
+  <a href="https://github.com/masternazz/scpsl-auto-joiner/releases/latest"><strong>Download for Windows</strong></a>
+  &nbsp;|&nbsp;
+  <a href="docs/roadmap-status.md">Feature status</a>
+  &nbsp;|&nbsp;
+  <a href="https://github.com/masternazz/scpsl-auto-joiner/issues">Report an issue</a>
+</p>
 
-![Auto-join demo](assets/generated/auto-join-demo.gif)
+<p align="center">
+  <img src="assets/generated/demo-rendered.gif" alt="Rendered Watch Mode demo: watch, confirm an open slot, connect, and join." width="720">
+</p>
 
-[Open the full-size MP4 demo](assets/generated/auto-join-demo.mp4)
+<p align="center">
+  <a href="assets/generated/demo-rendered.mp4">View the 1080p rendered walkthrough</a>
+  &nbsp;|&nbsp;
+  <a href="assets/generated/demo-webview.gif">Compare the staged WebView capture</a>
+  &nbsp;|&nbsp;
+  <a href="docs/readme-visuals.md">Recreate these visuals</a>
+</p>
 
-## Download
+## In one minute
 
-Download the latest Windows build from the [Releases page](https://github.com/masternazz/scpsl-auto-joiner/releases). Choose the portable ZIP or the setup installer.
+1. Download either the **setup installer** or the **portable ZIP** from [Releases](https://github.com/masternazz/scpsl-auto-joiner/releases/latest).
+2. Open **Servers** and add an address, or use **Remember current server** before joining normally in SCP:SL. The app reads the next local connection entry and lets you review the detected server before saving it.
+3. In **Auto-Join**, select a saved server or a retry group.
+4. Choose **Watch for a slot** for the recommended no-input workflow, or **Start auto-join** when you want it to start the Direct Connect flow immediately.
 
-The portable ZIP runs from any folder. The setup installer creates a per-user installation and optional shortcuts. Neither package installs SCP: Secret Laboratory, Steam, or any third-party game files.
+Watch Mode checks the saved server first. It does not touch SCP:SL until capacity is detected and confirmed. Immediate Auto-Join remains available for the normal retry flow.
 
-> **Early release notice:** This is an early Windows build and has not been tested on every SCP:SL server, monitor resolution, DPI setting, or Windows configuration. Please back up your local data, expect bugs, and [report issues on GitHub](https://github.com/masternazz/scpsl-auto-joiner/issues) with your Windows version, display setup, reproduction steps, and the app log.
+## What is new in v0.3.33
 
-## What it does
+- **Watch Mode** waits for an available slot before interacting with SCP:SL.
+- **Server history and insights** retain local availability, player-count, and latency observations.
+- **Smart retry groups** can retry in order, choose the first available server, or prefer lower latency with population limits.
+- **Destination bundles** provide previewed, privacy-limited server and group sharing.
+- **Discord Rich Presence** is optional and off by default; server details require an additional per-server opt-in.
+- **Calibration profiles** keep separate client-relative targets for different display setups.
+- **Translation packs** support local folders, ZIP files, links, GitHub discovery, backups, and user-requested update checks.
+- **Owned-server companion support** is separate, opt-in, and intended for servers you own or are authorized to manage.
 
-- Remembers server names and endpoints in a local server list
-- Organizes saved servers into ordered local groups for retrying
-- Detects the endpoint from SCP:SL’s `Player.log` when you join normally
-- Looks up a friendly server name through the server’s normal query response
-- Launches SCP:SL when it is closed
-- Opens Direct Connect and submits the saved endpoint
-- Detects accepted, rejected, full, cancelled, and timed-out attempts from `Player.log`
-- Retries rejected or full servers using the configured delay
-- Runs with no attempt or runtime limit when either limit is set to `0`
-- Supports automatic resolution-relative controls and optional per-computer calibration
-- Lets you delete saved servers and stop a running join at any time
-- Imports SCP:SL translation packs from dragged folders, ZIP files, GitHub links, or local paths
-- Searches GitHub dynamically for community translation repositories
-- Keeps multiple packs installed and lets you switch one active custom pack on or off
+## How it works
 
-## Requirements
+The app uses three narrow, visible mechanisms rather than hidden game modification:
 
-- 64-bit Windows 10 version 1809 (build 17763) or later, or Windows 11
-- SCP: Secret Laboratory installed through Steam
-- Permission to join the selected server
-- Borderless or windowed SCP:SL is recommended for the most reliable background interaction
+| Mechanism | Used for | Not used for |
+| --- | --- | --- |
+| A2S server queries | Saved-server name, availability, player count, and latency | A public Internet server browser or player roles |
+| Local SCP:SL connection record | Remembering the next server you join normally | Uploading your connection history |
+| Short GUI interaction | Immediate Auto-Join after you choose it, or Watch Mode after a confirmed slot | Injection, OCR, memory access, or packet manipulation |
 
-The app does not use OCR, read game memory, inject into the game, manipulate packets, or bypass anti-cheat. It uses Steam launch parameters, targeted Windows input, and SCP:SL’s own log file.
+The activity log and retry timeline show what the app thinks happened: watching, slot candidate, connecting, full or rejected, retrying, joined, or an unclear result that needs diagnostics.
 
-## Quick start
+## Features
 
-1. Start the app and review the first-run local checks. They do not launch the game or capture the mouse.
-2. Open **Servers**, then choose **Remember a server**.
-3. Join the target server normally in SCP:SL.
-4. When the app detects the endpoint, give it a friendly name and save it.
-5. Select the saved server or an ordered group and choose **Start auto-join**.
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/generated/readme-auto-join.png" alt="Auto-Join page with Watch for a slot and selected saved server">
+      <strong>Watch or join</strong><br>
+      Select a saved destination or group, watch quietly for capacity, or start the immediate retry flow.
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/generated/readme-servers.png" alt="Servers page showing saved servers, live status, and a smart retry group">
+      <strong>Saved servers and smart groups</strong><br>
+      Refresh status, keep a local history, remember a server you are already playing, and use ordered or filtered groups.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/generated/readme-themes.png" alt="Settings page showing appearance modes and curated color palettes">
+      <strong>Appearance that stays yours</strong><br>
+      Choose light or dark mode, use curated palettes, change colors, or apply sanitized local CSS styling.
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/generated/readme-diagnostics.png" alt="Diagnostics page showing guided calibration and target preview">
+      <strong>Calibration and diagnostics</strong><br>
+      Keep client-relative profiles, inspect target previews, and create a useful bug report when a game update or display change causes trouble.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/generated/readme-text-packs.png" alt="Text Packs page with folder, ZIP, link, and GitHub import options">
+      <strong>Text Packs</strong><br>
+      Import translation folders or ZIP files, discover GitHub packs, select one active custom pack, and restore backups.
+    </td>
+    <td width="50%" valign="top">
+      <strong>Local controls</strong><br>
+      Use notification-area controls while active, optionally mute game audio during a run, and keep settings, reports, and history on this PC.
+      <br><br>
+      <strong>Optional integrations</strong><br>
+      Destination sharing, Discord presence, background monitoring, and the owned-server companion are deliberately opt-in.
+    </td>
+  </tr>
+</table>
 
-The app can launch SCP:SL automatically. On the first run, open **Calibration** if automatic controls do not match your game layout. Move the pointer over each named control and capture it without clicking the game. Calibration is stored per computer and should be repeated after changing display scaling, resolution, or the game window layout.
+## Privacy and safety
 
-The app checks the public GitHub Releases endpoint in the background at startup. If a newer release exists, it asks whether to install it. Enable **Install updates automatically** in Settings to approve verified releases without another prompt. The app downloads only GitHub-hosted assets, verifies their SHA-256 digest, installs the update, and restarts itself. A failed or offline check does not block the app.
+- The application is local-first. Saved servers, groups, history, settings, calibration profiles, themes, text-pack records, and bug reports remain in local AppData.
+- It does not use injection, OCR, memory inspection, packet manipulation, or a hosted application backend.
+- Discord presence is disabled by default. A visible server name or player count requires both global and per-server permission. Raw endpoints are not shown in Discord text.
+- Destination bundles exclude passwords, tokens, local IDs, calibration, history, themes, and other local settings. Every import has a preview before it is saved or joined.
+- The optional LabAPI companion is for owned or authorized servers only. It is a separate plugin, never installed automatically, and public-server role detection is not a feature of this app.
 
-## Settings
+See [the security review](docs/security-review.md), [destination sharing notes](docs/roadmap-status.md), and the [owned-server companion guide](docs/owned-server-companion.md) for details.
 
-The app exposes these controls:
+## Requirements and limitations
 
-- **Connection method**: Automatic temporary-foreground GUI actions are recommended; Background-only remains available as a hands-off compatibility option
-- **Navigation mode**: Use automatic resolution-relative controls or saved calibration
-- **Group looping**: Restart ordered groups after the final server, or stop after one pass
-- **Server refresh timeout**: Set the local A2S_INFO status-refresh timeout
-- **Retry delay**: Seconds between rejected attempts; `2` is the default
-- **Connection timeout**: Maximum time allowed for one attempt
-- **Maximum attempts**: Stop after this many attempts; `0` means unlimited
-- **Maximum runtime**: Stop after this many minutes; `0` means unlimited
-- **Notifications**: Save the Windows-notification preference
-- **Accent color**: Choose violet, cyan, amber, green, or red for the interface
-- **Local storage**: Open, export, or reset local settings, saved servers, groups, and calibration
-
-When both limits are `0`, auto-join continues until the server accepts the connection or you press **Stop**.
-
-## Text Packs
-
-Open **Text Packs** to drag in a translation folder or ZIP, choose one from a file picker, paste a GitHub repository/release link, or search GitHub for SCP:SL translation repositories. The app looks for `manifest.json` and translation `.txt` files, supports ZIPs with an extra outer folder, and installs packs in SCP:SL's `Translations` folder.
-
-Multiple packs can remain installed, but SCP:SL uses one selected language at a time. Use **Activate** to mark a custom pack as active, or **Default** to switch the app back to the built-in language. Replacing a pack managed by the app creates a backup first; unmanaged built-in language folders are preserved. The app never executes imported pack contents.
-
-Windows 10 is a supported target; the installer refuses older Windows versions so the packaged Qt runtime is not deployed onto an unsupported system. Windows notifications use the native toast path when available, with the in-app live feed as a fallback.
-
-## How results are detected
-
-SCP:SL writes connection events to `Player.log`. The app watches new log entries and classifies each attempt as connecting, accepted, rejected, cancelled, full, or timed out. This keeps join-state detection independent of monitor resolution.
-
-The app sends input to SCP:SL only during short GUI actions, then restores your previous window and cursor. Automatic briefly foregrounds the game for reliable Unity input and returns control to you while it waits. Background-only never moves the cursor but may be ignored by SCP:SL.
-
-## Local data
-
-The app stores its data in:
-
-```text
-%LOCALAPPDATA%\SCP-SL-Auto-Joiner
-```
-
-This folder contains saved servers, settings, calibration, and error logs. Use **Open data folder** in the app to inspect it.
-
-SCP:SL’s log remains in its normal location:
-
-```text
-%USERPROFILE%\AppData\LocalLow\Northwood\SCPSL\Player.log
-```
+- Windows 10 or Windows 11 with Steam and SCP: Secret Laboratory installed.
+- A saved server must answer A2S queries for Watch Mode and status to be useful. Query responses are advisory; a one-slot result is confirmed before Watch Mode acts.
+- SCP:SL/Unity window behavior can change across game updates, monitor layouts, DPI scales, and window modes. Automatic geometry is preferred; use Diagnostics and a calibration profile when it misses.
+- Immediate Auto-Join can briefly focus SCP:SL only when it must interact with its UI. Watch Mode does no game input until an eligible slot is confirmed.
+- A public global server browser requires access that this project does not use. The browser here is for saved destinations.
+- This project cannot reliably detect a role on public servers. Role and round data require the optional owned-server companion.
+- Windows packages are unsigned. Verify the release checksum before running a downloaded build; see [the security review](docs/security-review.md).
 
 ## Troubleshooting
 
-### The app cannot detect a server
+| Problem | First thing to check |
+| --- | --- |
+| A remembered server is not found | Start **Remember current server**, then join normally once in SCP:SL. Review the detected address and queried name before saving. |
+| Watch Mode cannot find capacity | Refresh the saved server. If queries fail repeatedly, leave Watch Mode running or use Immediate Auto-Join as the fallback. Some servers do not expose usable query data. |
+| The game UI is missed | Open **Diagnostics**, verify the detected client rectangle, monitor, and DPI, then recalibrate or choose the matching profile. |
+| Retries stop or look unclear | Read the Live Activity message. Include it, your SCP:SL version, resolution, DPI scale, and window mode in a generated bug report. |
+| An update fails | Restart the app, confirm that the previous version still opens, and download the current installer or portable ZIP from Releases. Your local AppData data is preserved across normal updates. |
 
-Confirm that SCP:SL has written a connection attempt to `Player.log`, then start **Remember a server** before joining. You can also add a server manually if you already know its host and port.
+## For contributors
 
-### A retry misses a control
-
-Use **Calibration**, capture the requested controls in order, and switch Settings to **Use saved calibration**. Borderless or windowed mode gives the automation a stable game window.
-
-### The game opens when it is already running
-
-The app uses the supported direct-connect launch path for a cold start. Close duplicate SCP:SL processes, then start the join again with one game window open.
-
-### The app stops too soon
-
-Set **Maximum attempts** and **Maximum runtime** to `0` for unlimited operation. Set **Retry delay** to `2` for the normal full-server retry interval.
-
-## Build and test
-
-Install Python 3.13, then run:
+The project is a Python backend with a local WebView UI. Read [development](docs/development.md), [architecture](docs/architecture.md), [product design](docs/product-design.md), and [release status](docs/roadmap-status.md) before changing behavior.
 
 ```powershell
-py -3.13 -m pip install -r requirements.txt
+# Run the main test suite.
 py -3.13 -m pytest tests --ignore=tests/test_gui_flow.py -q
+
+# Run legacy Qt flow tests separately (they use a different Qt process setup).
 py -3.13 -m pytest tests/test_gui_flow.py -q
-./build_release.ps1
+
+# Build a versioned portable ZIP and, when Inno Setup is installed, the setup installer.
+.\build_release.ps1 -Version 0.3.33
+
+# Regenerate the public README visuals with fictional data only.
+py -3.13 assets\brand\render_readme_assets.py
 ```
 
-The two test commands are intentionally separate because the legacy Qt GUI
-tests and WebView tests load different native Qt components. Running them in
-separate processes gives the same complete coverage without a native binding
-collision during pytest collection.
+The [visual maintenance guide](docs/readme-visuals.md) explains the reproducible demo and screenshot workflow. Release notes live in [`docs/`](docs/), and every release should preserve the user data in AppData.
 
-`build_release.ps1` creates the portable executable folder and ZIP. Install [Inno Setup](https://jrsoftware.org/isinfo.php), then run the script again to also create the setup installer. The packaged executable is created at `dist\SCP-SL-Auto-Joiner\SCP-SL-Auto-Joiner.exe`.
+## License and affiliation
 
-The repository also includes the source renderer for the README walkthrough at `assets\brand\render_demo.py`.
-
-## Project documentation
-
-- [Product design notes](docs/product-design.md)
-- [Implementation notes](docs/implementation-notes.md)
-- [Architecture](docs/architecture.md)
-- [Development guide](docs/development.md)
-- [Contributing](.github/CONTRIBUTING.md)
-- [Server name resolution research](docs/research/server-name-resolution.md)
-- [SCP:SL client and server browser research](docs/research/scpsl-client-server-browser.md)
-- [Background automation research](docs/background-automation-research.md)
-- [Security review](docs/security-review.md)
-- [Saved servers and groups](docs/server-groups.md)
-- [Known WebView2 startup/bridge issue](docs/known-issue-webview-startup.md)
-- [Private-server acceptance test](docs/private-server-acceptance.md)
-
-## License
-
-This repository is public for viewing and issue reporting, but it is not
-currently open-source licensed. All rights are reserved by MasterNazz; see
-[`LICENSE.txt`](LICENSE.txt). Commercial licensing may be offered later.
+This is an independent community tool and is not affiliated with Northwood Studios, Steam, Valve, or Discord. SCP: Secret Laboratory and related marks belong to their respective owners. See [LICENSE.txt](LICENSE.txt).
