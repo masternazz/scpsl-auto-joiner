@@ -1,0 +1,12 @@
+Copyright (c) 2026 MasterNazz
+
+All rights reserved.
+
+This repository and its contents are provided publicly for viewing and issue
+reporting only. No permission is granted to copy, modify, publish, distribute,
+sublicense, sell, or create derivative works from the source code, assets,
+documentation, or compiled packages without prior written permission from the
+copyright holder.
+
+The copyright holder may grant separate commercial or open-source permissions
+in the future. Such permissions apply only when provided in a written license.

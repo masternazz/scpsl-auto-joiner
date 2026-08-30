@@ -126,9 +126,15 @@ Install Python 3.13, then run:
 
 ```powershell
 py -3.13 -m pip install -r requirements.txt
-py -3.13 -m pytest -q
+py -3.13 -m pytest tests --ignore=tests/test_gui_flow.py -q
+py -3.13 -m pytest tests/test_gui_flow.py -q
 ./build_release.ps1
 ```
+
+The two test commands are intentionally separate because the legacy Qt GUI
+tests and WebView tests load different native Qt components. Running them in
+separate processes gives the same complete coverage without a native binding
+collision during pytest collection.
 
 `build_release.ps1` creates the portable executable folder and ZIP. Install [Inno Setup](https://jrsoftware.org/isinfo.php), then run the script again to also create the setup installer. The packaged executable is created at `dist\SCP-SL-Auto-Joiner\SCP-SL-Auto-Joiner.exe`.
 
@@ -147,4 +153,6 @@ The repository also includes the source renderer for the README walkthrough at `
 
 ## License
 
-No license has been selected yet. Until the repository gains a license, all rights remain with the copyright holder.
+This repository is public for viewing and issue reporting, but it is not
+currently open-source licensed. All rights are reserved by MasterNazz; see
+[`LICENSE.txt`](LICENSE.txt). Commercial licensing may be offered later.
