@@ -1,6 +1,6 @@
 #define MyAppName "SCP:SL Auto-Joiner"
 #define MyAppSafeName "SCP-SL Auto-Joiner"
-#define MyAppVersion "0.3.24"
+#define MyAppVersion GetEnv("SCP_SL_APP_VERSION")
 #define MyAppPublisher "MasterNazz"
 #define MyAppExeName "SCP-SL-Auto-Joiner.exe"
 
@@ -36,6 +36,11 @@ Source: "dist\SCP-SL-Auto-Joiner\*"; DestDir: "{app}"; Flags: ignoreversion recu
 [Icons]
 Name: "{group}\{#MyAppSafeName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppSafeName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+
+[Registry]
+Root: HKCU; Subkey: "Software\Classes\scpsl-autojoin"; ValueType: string; ValueName: ""; ValueData: "URL:SCP:SL Auto-Joiner Destination"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\scpsl-autojoin"; ValueType: none; ValueName: "URL Protocol"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\scpsl-autojoin\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Flags: uninsdeletekey
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent

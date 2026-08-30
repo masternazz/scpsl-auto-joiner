@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 import urllib.parse
 import urllib.request
 import uuid
@@ -137,6 +138,9 @@ class PackManager:
                 "folder": folder,
                 "source": source_url or (old.get("source", "") if old else ""),
                 "backup": backup,
+                "source_type": self._source_type(source_url or (old.get("source", "") if old else "")),
+                "revision": old.get("revision") if old else None,
+                "last_checked": None,
             }
             data["packs"] = [pack for pack in data["packs"] if pack.get("id") != record["id"]]
             data["packs"].append(record)
@@ -144,6 +148,37 @@ class PackManager:
             return record
         finally:
             shutil.rmtree(staging, ignore_errors=True)
+
+    def update_from_path(self, pack_id, source, source_url=""):
+        """Replace an installed pack from a validated local staging source.
+
+        The caller is responsible for obtaining user confirmation.  Importing
+        through the normal path creates a dated backup before replacement and
+        retains the installed pack id, so an update cannot silently create a
+        second copy of the same pack.
+        """
+        data = self.load()
+        current = next((item for item in data["packs"] if item.get("id") == str(pack_id)), None)
+        if not current:
+            raise PackError("pack is not installed")
+        record = self.import_path(source, source_url or current.get("source", ""))
+        if record["id"] != current["id"]:
+            raise PackError("updated pack identity did not match the installed pack")
+        record["source_type"] = current.get("source_type") or ("github" if "github.com/" in record["source"] else "local")
+        record["last_checked"] = time.time()
+        data = self.load()
+        for item in data["packs"]:
+            if item.get("id") == record["id"]:
+                item.update(record)
+        self._save(data)
+        return {"ok": True, "pack": record}
+
+    @staticmethod
+    def _source_type(source_url):
+        value = str(source_url or "").lower()
+        if "github.com/" not in value:
+            return "local"
+        return "github_release" if "/releases/" in value else "github"
 
     def activate(self, pack_id):
         data = self.load()

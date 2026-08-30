@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Import SCP:SL destination</title>
+  <style>
+    :root{color-scheme:dark;font:16px/1.5 system-ui,sans-serif;background:#0b090f;color:#f7f3fa}
+    body{display:grid;place-items:center;min-height:100vh;margin:0;padding:24px}
+    main{max-width:560px;padding:32px;border:1px solid #594674;border-radius:14px;background:#15111c}
+    h1{margin-top:0}p{color:#aa9db9}.button{display:inline-block;padding:12px 18px;border-radius:8px;background:#b68aff;color:#160d22;text-decoration:none;font-weight:700}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>SCP:SL destination bundle</h1>
+    <p id="message">Opening the installed Auto-Joiner&hellip;</p>
+    <a class="button" id="open" hidden>Open Auto-Joiner</a>
+  </main>
+  <script>
+    const value = location.hash.slice(1);
+    const link = value && value.startsWith('scpsl-autojoin://') ? value : '';
+    const open = document.querySelector('#open');
+    const message = document.querySelector('#message');
+    if (link) {
+      open.href = link;
+      open.hidden = false;
+      message.textContent = 'If the app did not open automatically, use the button below.';
+      location.replace(link);
+    } else {
+      message.textContent = 'This page needs a destination link from the Auto-Joiner.';
+    }
+  </script>
+</body>
+</html>

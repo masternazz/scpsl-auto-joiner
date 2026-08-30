@@ -7,21 +7,31 @@ import json
 import os
 import re
 import shutil
+import tempfile
 import threading
 import time
 import webbrowser
+from concurrent.futures import ThreadPoolExecutor
 
 import config
+import audio_control
 import joiner
 import logwatch
 import resolver
 import server_store
 import winput
+from history import ServerHistory
+from watch_mode import QueryFailureTracker, SlotConfirmation, eligible, select_candidate
+from destinations import decode_link, encode_link, export_bundle, import_bundle
+from calibration_profiles import CalibrationProfiles, executable_fingerprint
+from discord_presence import DiscordPresence
 from app_paths import app_dir
 from theme_manager import ThemeManager
 from translation_packs import PackError, PackManager
+from monitoring import BackgroundMonitor
+import secret_store
 
-APP_VERSION = "0.3.24"
+APP_VERSION = os.environ.get("SCP_SL_APP_VERSION", "0.3.25")
 
 
 def _translation_dir():
@@ -39,11 +49,38 @@ class WebApi:
         self.translations_dir = os.path.abspath(os.fspath(translations_dir or _translation_dir()))
         self.pack_manager = PackManager(self.data_dir, self.translations_dir)
         self.theme_manager = ThemeManager(self.data_dir)
+        self.history = ServerHistory(os.path.join(self.data_dir, "history.sqlite3"))
+        self.calibration_profiles = CalibrationProfiles(os.path.join(self.data_dir, "calibrations.json"))
+        self._migrate_legacy_calibration()
+        # Restore only the local preference. Discord IPC remains lazy and is
+        # still harmless when Discord is not installed or running.
+        self.discord = DiscordPresence()
+        self.discord.set_enabled(bool(self._load_config().get("discord_enabled", False)))
         self._sink = None
         self._join_thread = None
         self._join_stop = threading.Event()
         self._remember_thread = None
         self._remember_stop = threading.Event()
+        self._watch_thread = None
+        self._watch_stop = threading.Event()
+        self._watch_pause = threading.Event()
+        self._monitor = None
+        self._manual_audio_controller = None
+        self._last_join_result = None
+        self._watch_state = {"state": "idle", "server_id": None, "attempt": 0, "last_status": None}
+
+    def _migrate_legacy_calibration(self):
+        """Preserve pre-profile calibration as an explicit named profile."""
+        data = self.calibration_profiles.load()
+        if data.get("profiles"):
+            return
+        cfg = self._load_config()
+        points = cfg.get("click_points") or {}
+        if not all(tuple(points.get(name, (0, 0))) != (0, 0) for name in config.REQUIRED_CLICK_POINTS):
+            return
+        metadata = dict(cfg.get("calibration_metadata") or {})
+        metadata.setdefault("migration", "Imported calibration")
+        self.calibration_profiles.add("Imported calibration", points, metadata)
 
     def _load_config(self):
         return config.load_config(self.config_path)
@@ -93,6 +130,7 @@ class WebApi:
         return {
             "servers": store["servers"], "groups": store["groups"],
             "settings": cfg, "calibration": self.get_calibration_state()["calibration"],
+            "calibration_profiles": self.get_calibration_profiles(),
             "theme": self.theme_manager.load(), "packs": self.pack_manager.load(),
             "join": self.get_join_status()["join"],
             "storage": storage,
@@ -103,6 +141,18 @@ class WebApi:
 
     def get_servers(self, query=""):
         return {"ok": True, "servers": server_store.search_servers(query, self.store_path)}
+
+    def save_server_profile(self, server_id, profile):
+        store = self._load_store()
+        for server in store["servers"]:
+            if server["id"] == str(server_id):
+                server.update({"monitoring": dict(profile.get("monitoring") or server.get("monitoring") or {}), "join_profile": dict(profile.get("join_profile") or server.get("join_profile") or {}), "share_presence": bool(profile.get("share_presence", server.get("share_presence", False))), "companion_url": profile.get("companion_url", server.get("companion_url"))})
+                if "companion_token" in profile:
+                    token = str(profile.get("companion_token") or "")
+                    server["companion_token"] = secret_store.protect(token) if token else None
+                server_store.save_store(store, self.store_path)
+                return {"ok": True, "server": server}
+        return {"ok": False, "error": "saved server was not found"}
 
     def save_server(self, name, ip, port):
         try:
@@ -181,17 +231,362 @@ class WebApi:
         except (KeyError, TypeError, ValueError) as exc:
             return {"ok": False, "error": str(exc)}
 
+    def save_group_policy(self, group_id, policy):
+        store = self._load_store()
+        for group in store["groups"]:
+            if group["id"] == str(group_id):
+                candidate = dict(group.get("policy") or {})
+                candidate.update(dict(policy or {}))
+                try:
+                    normalized = server_store._validate_group_record({**group, "policy": candidate}, {s["id"] for s in store["servers"]})
+                except (TypeError, ValueError) as exc:
+                    return {"ok": False, "error": str(exc)}
+                candidate = normalized["policy"]
+                group["policy"] = candidate; server_store.save_store(store, self.store_path)
+                return {"ok": True, "group": group}
+        return {"ok": False, "error": "retry group was not found"}
+
     def delete_group(self, group_id):
         return {"ok": True, "deleted": server_store.delete_group(str(group_id), self.store_path)}
 
-    def start_join(self, target, target_type="server"):
+    def start_join(self, target, target_type="server", start_mode="immediate"):
+        if start_mode == "watch":
+            return self.start_watch(target, target_type)
         if self._join_thread and self._join_thread.is_alive():
             return {"ok": False, "error": "auto-join is already running"}
         self._join_stop.clear()
+        profile_data = self.get_calibration_profiles()
+        active = next((p for p in profile_data.get("profiles", []) if p.get("id") == profile_data.get("active")), None)
+        if active and active.get("health") == "stale":
+            self.emit("status_changed", {"message": "Calibration profile is stale for the current game/display; recalibration is recommended."})
+        if target_type == "server":
+            self.update_discord_presence("connecting", str(target))
         runner = joiner.run_group if target_type == "group" else joiner.run
         self._join_thread = threading.Thread(target=self._run_join, args=(runner, target), daemon=True)
         self._join_thread.start()
         return {"ok": True}
+
+    def start_watch(self, target, target_type="server"):
+        if self._watch_thread and self._watch_thread.is_alive():
+            return {"ok": False, "error": "watch mode is already running"}
+        self._watch_stop.clear(); self._watch_pause.clear()
+        self._watch_state = {"state": "querying", "server_id": str(target) if target_type == "server" else None, "attempt": 0, "last_status": None, "target_type": target_type}
+        if target_type == "server":
+            self.update_discord_presence("watching", str(target))
+        self._watch_thread = threading.Thread(target=self._watch_worker, args=(str(target), target_type), daemon=True)
+        self._watch_thread.start()
+        self.emit("watch_status_changed", dict(self._watch_state))
+        return {"ok": True, "watch": dict(self._watch_state)}
+
+    def _watch_worker(self, target, target_type):
+        try:
+            store = self._load_store()
+            candidates = ([s for s in store["servers"] if s["id"] == target] if target_type == "server" else [])
+            if target_type == "group":
+                group = next((g for g in store["groups"] if g["id"] == target), None)
+                candidates = [s for s in store["servers"] if group and s["id"] in group["server_ids"]]
+            group_policy = {}
+            if target_type == "group":
+                group_policy = next((g.get("policy") or {} for g in store["groups"] if g["id"] == target), {})
+            confirmations = {s["id"]: SlotConfirmation(2) for s in candidates}
+            query_failures = {s["id"]: QueryFailureTracker(3) for s in candidates}
+            while not self._watch_stop.is_set() and candidates:
+                if self._watch_pause.is_set():
+                    self._watch_state["state"] = "paused"; self.emit("watch_status_changed", dict(self._watch_state)); time.sleep(.25); continue
+                self._watch_state["state"] = "querying"
+                statuses = []
+                # Query group members concurrently, but cap fan-out so a
+                # large saved group cannot flood the network or the server
+                # query layer. Dict insertion order preserves manual order.
+                with ThreadPoolExecutor(max_workers=min(5, len(candidates)), thread_name_prefix="watch-query") as executor:
+                    futures = {server["id"]: executor.submit(self._query_server, server) for server in candidates}
+                    for server in candidates:
+                        if self._watch_stop.is_set(): break
+                        try:
+                            raw_status = futures[server["id"]].result()
+                        except Exception:
+                            raw_status = None
+                        if query_failures[server["id"]].observe(raw_status) and not self._watch_state.get("fallback_available"):
+                            self._watch_state["fallback_available"] = True
+                            self.emit("watch_fallback_available", {"server_id": server["id"], "message": "Server queries are failing. Normal Auto-Join is available as a fallback."})
+                            self.emit("toast_requested", {"message": "Watch Mode is still monitoring; normal Auto-Join is available if needed."})
+                        status = raw_status or {"available": False}
+                        self._watch_state["last_status"] = status; self.history.record(server["id"], status.get("available", False), status.get("players"), status.get("max_players"), status.get("latency_ms"))
+                        self.emit("server_sampled", {"server_id": server["id"], "status": status})
+                        statuses.append({**status, "id": server["id"], "server": server})
+                if target_type == "group":
+                    chosen = select_candidate(statuses, group_policy)
+                    if chosen and not confirmations[chosen["id"]].accepts(chosen):
+                        chosen = None
+                else:
+                    # A polling cycle contributes at most one confirmation
+                    # sample.  Do not call accepts() again after selecting it.
+                    chosen = next((s for s in statuses if eligible(s) and confirmations[s["id"]].accepts(s)), None)
+                if chosen:
+                    server = chosen["server"]
+                    if server:
+                        self._watch_state["state"] = "joining"; self.emit("watch_status_changed", dict(self._watch_state))
+                        self._last_join_result = None
+                        self.start_join(server["id"], "server", "immediate")
+                        # Keep Watch Mode alive around a failed/full join.  A
+                        # slot can disappear between the two query samples and
+                        # the actual GUI connection attempt; that is a normal
+                        # race, not a reason to terminate monitoring.
+                        while (self._join_thread and self._join_thread.is_alive()
+                               and not self._watch_stop.is_set()):
+                            time.sleep(.1)
+                        if self._last_join_result == "success":
+                            return
+                        if not self._watch_stop.is_set():
+                            self._watch_state["state"] = "querying"
+                            self._watch_state["last_status"] = {"available": False, "reason": "join_failed"}
+                            self.emit("watch_status_changed", dict(self._watch_state))
+                            time.sleep(1)
+                            continue
+                        return
+                self.emit("watch_status_changed", dict(self._watch_state)); time.sleep(2)
+        finally:
+            if self._watch_state.get("state") not in {"joining", "joined"}:
+                self._watch_state["state"] = "stopped" if self._watch_stop.is_set() else "failed"
+            self.emit("watch_status_changed", dict(self._watch_state))
+
+    def pause_watch(self):
+        self._watch_pause.set(); return {"ok": True}
+
+    def resume_watch(self):
+        self._watch_pause.clear(); return {"ok": True}
+
+    def stop_watch(self):
+        self._watch_stop.set(); self._watch_pause.clear(); self.set_game_audio_muted(False); self.clear_discord_presence(); return {"ok": True}
+
+    def set_game_audio_muted(self, muted):
+        """Toggle a tray/manual mute and always restore the prior session state."""
+        if muted:
+            if self._manual_audio_controller is None:
+                self._manual_audio_controller = audio_control.start_for_run(True, lambda message: self.emit("log_line", {"message": message}))
+            return {"ok": True, "muted": bool(self._manual_audio_controller)}
+        if self._manual_audio_controller is not None:
+            self._manual_audio_controller.stop()
+            self._manual_audio_controller = None
+        return {"ok": True, "muted": False}
+
+    def get_watch_status(self):
+        return {"ok": True, "watch": dict(self._watch_state)}
+
+    def get_server_history(self, server_id, limit=100):
+        return {"ok": True, "samples": self.history.recent(str(server_id), int(limit))}
+
+    def get_server_insights(self, server_id):
+        return {"ok": True, "insights": self.history.insights(str(server_id))}
+
+    def _monitor_query(self, server):
+        return self._query_server(server)
+
+    @staticmethod
+    def _companion_token(server):
+        encrypted = server.get("companion_token")
+        if not encrypted:
+            return ""
+        try:
+            return secret_store.unprotect(encrypted)
+        except (RuntimeError, OSError, ValueError):
+            return ""
+
+    def _query_server(self, server):
+        url = server.get("companion_url")
+        token = self._companion_token(server)
+        if url and token:
+            try:
+                from companion_client import CompanionClient
+                companion = CompanionClient(url, token).status(timeout=2)
+                capacity = companion["capacity"]
+                return {"available": True, "players": capacity["players"], "max_players": capacity["max_players"], "latency_ms": None, "source": "companion", "round": companion.get("round", {}), "player": companion.get("player", {})}
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                pass
+        return resolver.query_server(server["ip"], server["port"], path=self.store_path) or {"available": False}
+
+    def _record_monitor_sample(self, server, status):
+        self.history.record(server["id"], status.get("available", False), status.get("players"), status.get("max_players"), status.get("latency_ms"))
+        self.emit("server_sampled", {"server_id": server["id"], "status": status, "source": "background"})
+
+    def start_background_monitor(self):
+        if self._monitor and self._monitor.running:
+            return {"ok": False, "error": "background monitoring is already running"}
+        servers = [server for server in self._load_store()["servers"] if (server.get("monitoring") or {}).get("enabled")]
+        if not servers:
+            return {"ok": False, "error": "enable monitoring on at least one saved server first"}
+        self._monitor = BackgroundMonitor(servers, self._monitor_query, self._record_monitor_sample)
+        self._monitor.start()
+        self.emit("monitor_status_changed", {"running": True, "servers": len(self._monitor.servers)})
+        return {"ok": True, "monitor": self.get_monitor_status()}
+
+    def stop_background_monitor(self):
+        if self._monitor:
+            self._monitor.stop()
+        self.emit("monitor_status_changed", {"running": False, "servers": 0})
+        return {"ok": True, "monitor": self.get_monitor_status()}
+
+    def get_monitor_status(self):
+        return {"running": bool(self._monitor and self._monitor.running), "servers": len(self._monitor.servers) if self._monitor else 0}
+
+    def get_calibration_profiles(self):
+        data = self.calibration_profiles.load()
+        current = self._calibration_runtime_metadata()
+        for profile in data.get("profiles", []):
+            profile["health"] = self.calibration_profiles.health(profile, current)
+        return {"ok": True, **data, "current_metadata": current}
+
+    def save_calibration_profile(self, name, points, metadata):
+        return {"ok": True, "profile": self.calibration_profiles.add(name, points, metadata), **self.calibration_profiles.load()}
+
+    def set_active_calibration_profile(self, profile_id):
+        data = self.calibration_profiles.load(); data["active"] = str(profile_id); self.calibration_profiles.save(data); return {"ok": True, **data}
+
+    def delete_calibration_profile(self, profile_id):
+        data = self.calibration_profiles.load(); data["profiles"] = [p for p in data["profiles"] if p.get("id") != str(profile_id)]; data["active"] = data["active"] if any(p.get("id") == data["active"] for p in data["profiles"]) else None; self.calibration_profiles.save(data); return {"ok": True, **data}
+
+    def rename_calibration_profile(self, profile_id, name):
+        try:
+            self.calibration_profiles.rename(profile_id, name)
+            return {"ok": True, **self.calibration_profiles.load()}
+        except (KeyError, TypeError, ValueError) as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def duplicate_calibration_profile(self, profile_id, name):
+        try:
+            profile = self.calibration_profiles.duplicate(profile_id, name)
+            return {"ok": True, "profile": profile, **self.calibration_profiles.load()}
+        except (KeyError, TypeError, ValueError) as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def set_discord_enabled(self, enabled):
+        result = self.discord.set_enabled(enabled)
+        cfg = self._load_config(); cfg["discord_enabled"] = bool(enabled); self._save_config(cfg)
+        return result
+
+    def get_discord_status(self):
+        return {"ok": True, "enabled": self.discord.enabled, "presence": self.discord.current}
+
+    def clear_discord_presence(self):
+        return self.discord.clear()
+
+    def update_discord_presence(self, status, server_id=None, players=None):
+        """Update presence without ever exposing an endpoint."""
+        cfg = self._load_config()
+        if bool(cfg.get("discord_enabled")) != self.discord.enabled:
+            self.discord.set_enabled(bool(cfg.get("discord_enabled")))
+        server = next((item for item in self._load_store()["servers"] if item["id"] == str(server_id)), None)
+        share = bool(cfg.get("discord_share_players")) and bool(server and server.get("share_presence"))
+        return self.discord.update(status, server_name=server.get("name") if server else None, players=players, share=share)
+
+    def get_companion_status(self, url, token):
+        try:
+            from companion_client import CompanionClient
+            return {"ok": True, "status": CompanionClient(url, token).status()}
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def check_translation_updates(self):
+        """Return update candidates without downloading or activating anything."""
+        from translation_updates import source_details, github_revision, github_release
+        results = []
+        for pack in self.pack_manager.load().get("packs", []):
+            details = source_details(pack.get("source", ""))
+            if details["kind"] not in {"github", "github_release"}:
+                continue
+            try:
+                if details["kind"] == "github_release":
+                    release = github_release(details["owner"], details["repo"], details["tag"])
+                    revision = release.get("tag")
+                else:
+                    release = None
+                    revision = github_revision(details["owner"], details["repo"])
+            except Exception as exc:
+                results.append({"id": pack.get("id"), "error": str(exc)})
+                continue
+            if revision and revision != pack.get("revision"):
+                item = {"id": pack.get("id"), "name": pack.get("name"), "revision": revision, "update_available": True}
+                if release and release.get("asset_url"):
+                    item["asset_url"] = release["asset_url"]
+                results.append(item)
+        return {"ok": True, "updates": results}
+
+    def update_translation_pack(self, pack_id):
+        """Download and replace one pack only after the user requests it."""
+        pack = next((item for item in self.pack_manager.load().get("packs", []) if item.get("id") == str(pack_id)), None)
+        if not pack:
+            return {"ok": False, "error": "pack is not installed"}
+        source = pack.get("source", "")
+        try:
+            from translation_updates import source_details, github_release
+            details = source_details(source)
+            revision = None
+            if details["kind"] == "github_release":
+                release = github_release(details["owner"], details["repo"], details["tag"])
+                revision = release.get("tag")
+                download_url = release.get("asset_url") or release.get("zipball_url")
+                if not download_url:
+                    raise PackError("GitHub release has no downloadable ZIP")
+            else:
+                # Repository revision is checked separately by the explicit
+                # update-check action; keep the current value if the download
+                # itself is being tested/offline.
+                revision = pack.get("revision")
+                download_url = self.pack_manager.resolve_link(source)
+            payload = self.pack_manager._read_url(download_url)
+            fd, temporary = tempfile.mkstemp(prefix="translation-update-", suffix=".zip", dir=self.data_dir)
+            os.close(fd)
+            try:
+                with open(temporary, "wb") as stream:
+                    stream.write(payload)
+                result = self.pack_manager.update_from_path(str(pack_id), temporary, source)
+            finally:
+                try:
+                    os.remove(temporary)
+                except OSError:
+                    pass
+            result["pack"]["revision"] = revision
+            result["pack"]["last_checked"] = time.time()
+            data = self.pack_manager.load()
+            for item in data.get("packs", []):
+                if item.get("id") == str(pack_id):
+                    item.update({"revision": revision, "last_checked": result["pack"]["last_checked"]})
+            self.pack_manager._save(data)
+            return {"ok": True, "pack": result["pack"], "packs": data}
+        except (PackError, OSError, ValueError, TypeError) as exc:
+            return {"ok": False, "error": str(exc), "packs": self.pack_manager.load()}
+
+    def export_destination(self, name, server_ids):
+        store = self._load_store(); servers = [s for s in store["servers"] if s["id"] in {str(i) for i in server_ids}]
+        try: return {"ok": True, "bundle": export_bundle(name, servers)}
+        except (KeyError, TypeError, ValueError) as exc: return {"ok": False, "error": str(exc)}
+
+    def export_destination_link(self, name, server_ids):
+        result = self.export_destination(name, server_ids)
+        if not result.get("ok"):
+            return result
+        return {"ok": True, "bundle": result["bundle"], "link": encode_link(result["bundle"])}
+
+    def preview_destination(self, raw):
+        try: return {"ok": True, "destination": import_bundle(raw)}
+        except (ValueError, TypeError, json.JSONDecodeError) as exc: return {"ok": False, "error": str(exc)}
+
+    def import_destination(self, raw):
+        try:
+            destination = import_bundle(raw)
+            imported = [server_store.upsert_server(item["name"], item["host"], item["port"], self.store_path) for item in destination["servers"]]
+            self.emit("destination_received", {"name": destination["name"], "count": len(imported)})
+            return {"ok": True, "destination": destination, "servers": imported}
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def import_destination_link(self, link):
+        try:
+            value = str(link).strip()
+            payload = decode_link(value) if value.lower().startswith("scpsl-autojoin://") else import_bundle(value)
+            return self.import_destination(json.dumps(payload))
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            return {"ok": False, "error": str(exc)}
 
     def _run_join(self, runner, target):
         def status(message):
@@ -199,12 +594,29 @@ class WebApi:
             self.emit("log_line", {"message": str(message)})
         try:
             result = runner(target, on_status=status, stop_event=self._join_stop)
+            self._last_join_result = result
+            if result == "success" and self._watch_state.get("state") == "joining":
+                self._watch_state["state"] = "joined"
+                self.emit("watch_status_changed", dict(self._watch_state))
+            self.update_discord_presence("joined" if result == "success" else "idle", target if result == "success" and isinstance(target, str) else None)
             self.emit("join_succeeded" if result == "success" else "join_failed", {"result": result})
         except Exception as exc:
+            self._last_join_result = "error"
+            self.update_discord_presence("idle")
             self.emit("join_failed", {"result": "error", "message": str(exc)})
 
     def stop_join(self):
-        self._join_stop.set(); return {"ok": True}
+        self._join_stop.set(); self.clear_discord_presence(); return {"ok": True}
+
+    def shutdown(self):
+        """Release background resources when the desktop window closes."""
+        self._join_stop.set()
+        self._watch_stop.set()
+        self._watch_pause.clear()
+        if self._monitor:
+            self._monitor.stop()
+        self.set_game_audio_muted(False)
+        self.clear_discord_presence()
 
     def get_join_status(self):
         running = bool(self._join_thread and self._join_thread.is_alive())
@@ -213,11 +625,21 @@ class WebApi:
     def get_calibration_state(self):
         cfg = self._load_config()
         metadata = dict(cfg.get("calibration_metadata") or {})
+        metadata.update(self._calibration_runtime_metadata())
         hwnd = winput.find_game_window(joiner.GAME_TITLE)
         if hwnd:
             rect = winput.get_client_rect(hwnd)
             metadata.update({"live_client_rect": list(rect) if rect else None, "live_dpi": winput.get_window_dpi(hwnd)})
         return {"ok": True, "calibration": {"calibrated": config.calibrated(cfg), "points": cfg.get("click_points", {}), "metadata": metadata}}
+
+    def _calibration_runtime_metadata(self):
+        executable = joiner.find_game_executable()
+        metadata = {"game_fingerprint": executable_fingerprint(executable)}
+        hwnd = winput.find_game_window(joiner.GAME_TITLE)
+        if hwnd:
+            rect = winput.get_client_rect(hwnd)
+            metadata.update({"client_size": [rect[2] - rect[0], rect[3] - rect[1]] if rect else None, "dpi": winput.get_window_dpi(hwnd)})
+        return metadata
 
     def capture_calibration_point(self, name):
         point = winput.get_cursor_pos()
@@ -272,7 +694,7 @@ class WebApi:
             low, high = numeric_limits[key]
             if not low <= value <= high:
                 return {"ok": False, "error": f"{key} must be between {low} and {high}"}
-        elif key in {"group_loop", "onboarding_complete", "notifications_enabled", "mute_game_audio", "auto_update"}:
+        elif key in {"group_loop", "onboarding_complete", "notifications_enabled", "mute_game_audio", "auto_update", "discord_enabled", "discord_share_players"}:
             if not isinstance(value, bool):
                 return {"ok": False, "error": f"{key} must be true or false"}
         elif key == "navigation_mode" and value not in {"automatic", "manual"}:

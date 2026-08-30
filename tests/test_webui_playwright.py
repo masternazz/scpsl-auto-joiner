@@ -88,6 +88,54 @@ def test_webui_pages_render_without_horizontal_overflow(width, height):
         browser.close()
 
 
+def test_webui_exposes_monitoring_discord_and_destination_tools():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.add_init_script("""
+          window.pywebview = {api: {
+            get_app_state: async () => ({ok:true,version:'0.3.25',servers:[{id:'s1',name:'Private',ip:'127.0.0.1',port:7777}],groups:[],settings:{},calibration:{calibrated:false,points:{}},packs:{packs:[],active_pack:null},theme:{preset:'violet'}}),
+            get_monitor_status: async () => ({running:false,servers:0}),
+            start_background_monitor: async () => ({ok:true}), stop_background_monitor: async () => ({ok:true}),
+            get_discord_status: async () => ({ok:true,enabled:false}), set_discord_enabled: async enabled => ({ok:true,enabled}),
+            preview_destination: async () => ({ok:false,error:'invalid'}), import_destination: async () => ({ok:true})
+          }};
+        """)
+        page.goto((ROOT / "webui" / "index.html").as_uri())
+        page.wait_for_selector("h1")
+        page.locator(".nav-item[data-page='settings']").click()
+        assert page.locator("#backgroundMonitor").count() == 1
+        assert page.locator("#discordPresence").count() == 1
+        page.locator(".nav-item[data-page='servers']").click()
+        assert page.locator("#destinationTools").count() == 1
+        page.locator("#destinationInput").fill('{"schema":"scpsl-autojoin.destination"}')
+        page.locator("#importDestination").click()
+        assert page.locator("#destinationPreview").inner_text() == "Preview the destination before importing."
+        browser.close()
+
+
+def test_servers_exposes_history_and_smart_group_controls():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.add_init_script("""
+          window.pywebview = {api: {
+            get_app_state: async () => ({ok:true,version:'0.3.25',servers:[{id:'s1',name:'Private',ip:'127.0.0.1',port:7777,status:{players:4,max_players:20,latency_ms:12}}],groups:[{id:'g1',name:'Favorites',server_ids:['s1'],policy:{strategy:'ordered_retry',minimum_players:0,maximum_fill_percent:100,loop:null}}],settings:{},calibration:{calibrated:false,points:{}},packs:{packs:[],active_pack:null},theme:{preset:'violet'}}),
+            get_server_insights: async () => ({ok:true,insights:{samples:8,peak_players:8,average_latency_ms:20,full_frequency:0,availability_likelihood:1,periods:{'24h':{},'7d':{},'30d':{}}}}),
+            save_server_profile: async () => ({ok:true}), save_group_policy: async () => ({ok:true}),
+            get_monitor_status: async () => ({running:false,servers:0})
+          }};
+        """)
+        page.goto((ROOT / "webui" / "index.html").as_uri())
+        page.wait_for_selector("h1")
+        page.locator(".nav-item[data-page='servers']").click()
+        assert page.locator("[data-history='s1']").count() == 1
+        assert page.locator("#groupStrategy").count() == 1
+        page.locator("[data-history='s1']").click()
+        assert page.locator("#serverHistory").is_visible()
+        browser.close()
+
+
 def test_webui_waits_for_delayed_pywebview_bridge():
     """The real WebView bridge arrives after the document script sometimes."""
     with sync_playwright() as playwright:

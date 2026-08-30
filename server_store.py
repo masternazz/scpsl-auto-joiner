@@ -9,7 +9,7 @@ import uuid
 from app_paths import app_dir
 
 STORE_PATH = os.path.join(app_dir(), "servers.json")
-STORE_VERSION = 1
+STORE_VERSION = 2
 _MIGRATION_NAMESPACE = uuid.UUID("f2d40e6e-7f8d-4e5d-a6e6-6a2c4d1de5b5")
 _HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,253}[A-Za-z0-9])?$")
 
@@ -20,6 +20,24 @@ def _path(path):
 
 def _empty_store():
     return {"version": STORE_VERSION, "servers": [], "groups": []}
+
+
+def _server_defaults(server):
+    normalized = dict(server)
+    monitoring = dict(normalized.get("monitoring") or {})
+    monitoring.setdefault("enabled", False)
+    monitoring.setdefault("query_interval_s", 2)
+    normalized["monitoring"] = monitoring
+    profile = dict(normalized.get("join_profile") or {})
+    profile.setdefault("retry_interval_s", None)
+    profile.setdefault("attempt_timeout_s", None)
+    profile.setdefault("mute_game_audio", None)
+    profile.setdefault("notifications_enabled", None)
+    normalized["join_profile"] = profile
+    normalized.setdefault("share_presence", False)
+    normalized.setdefault("companion_url", None)
+    normalized.setdefault("companion_token", None)
+    return normalized
 
 
 def _quarantine(path):
@@ -52,17 +70,25 @@ def _validate_endpoint(ip, port):
 
 
 def _migrate(data):
-    if isinstance(data, dict) and data.get("version") == STORE_VERSION:
+    if isinstance(data, dict) and data.get("version") in (1, STORE_VERSION):
         store = {
             "version": STORE_VERSION,
             "servers": list(data.get("servers", [])),
             "groups": list(data.get("groups", [])),
         }
         for index, server in enumerate(store["servers"]):
-            store["servers"][index] = _validate_server_record(server)
+            store["servers"][index] = _server_defaults(_validate_server_record(server))
         available = {server["id"] for server in store["servers"]}
         for index, group in enumerate(store["groups"]):
-            store["groups"][index] = _validate_group_record(group, available)
+            normalized = _validate_group_record(group, available)
+            policy = dict(normalized.get("policy") or {})
+            policy.setdefault("strategy", "ordered_retry")
+            policy.setdefault("minimum_players", 0)
+            policy.setdefault("maximum_fill_percent", 100)
+            policy.setdefault("loop", None)
+            normalized["policy"] = policy
+            store["groups"][index] = normalized
+        store["version"] = STORE_VERSION
         return store
     if not isinstance(data, dict):
         raise ValueError("store must be an object")
@@ -70,7 +96,7 @@ def _migrate(data):
     for name, entry in data.items():
         ip, port = _validate_endpoint(entry.get("ip"), entry.get("port"))
         server_id = str(uuid.uuid5(_MIGRATION_NAMESPACE, "%s\0%s\0%s" % (name, ip, port)))
-        servers.append({"id": server_id, "name": str(name), "ip": ip, "port": port})
+        servers.append(_server_defaults({"id": server_id, "name": str(name), "ip": ip, "port": port}))
     return {"version": STORE_VERSION, "servers": servers, "groups": []}
 
 
@@ -103,6 +129,28 @@ def _validate_group_record(group, available):
         raise ValueError("unknown server ID")
     normalized = dict(group)
     normalized.update({"id": group["id"].strip(), "name": group["name"].strip(), "server_ids": list(server_ids)})
+    policy = dict(group.get("policy") or {})
+    strategy = policy.get("strategy", "ordered_retry")
+    if strategy not in {"ordered_retry", "first_available", "lowest_latency"}:
+        raise ValueError("unsupported group strategy")
+    try:
+        minimum_players = int(policy.get("minimum_players", 0))
+        maximum_fill = float(policy.get("maximum_fill_percent", 100))
+    except (TypeError, ValueError):
+        raise ValueError("invalid group population policy") from None
+    if isinstance(policy.get("minimum_players", 0), bool) or minimum_players < 0:
+        raise ValueError("invalid minimum player count")
+    if maximum_fill < 0 or maximum_fill > 100:
+        raise ValueError("maximum fill must be between 0 and 100")
+    loop = policy.get("loop", None)
+    if loop is not None and not isinstance(loop, bool):
+        raise ValueError("invalid group loop policy")
+    normalized["policy"] = {
+        "strategy": strategy,
+        "minimum_players": minimum_players,
+        "maximum_fill_percent": maximum_fill,
+        "loop": loop,
+    }
     return normalized
 
 
@@ -210,6 +258,14 @@ def update_group(group_id, server_ids, path=None, name=None):
     for index, group in enumerate(store["groups"]):
         if group["id"] == group_id:
             updated = _group(group["name"] if name is None else name, server_ids, store, group_id)
+            # Editing the visible order must not silently discard the group's
+            # watch/selection policy introduced by store version 2.
+            updated["policy"] = dict(group.get("policy") or {
+                "strategy": "ordered_retry",
+                "minimum_players": 0,
+                "maximum_fill_percent": 100,
+                "loop": None,
+            })
             store["groups"][index] = updated
             save_store(store, path)
             return dict(updated)

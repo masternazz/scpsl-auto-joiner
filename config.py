@@ -33,6 +33,8 @@ DEFAULTS = {
     "max_attempts": 100,
     "max_minutes": 30,
     "auto_update": False,
+    "discord_enabled": False,
+    "discord_share_players": False,
     "accent": "violet",
     "custom_accent": "#b186ff",
     "click_points": {
