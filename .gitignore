@@ -23,6 +23,10 @@ assets/generated/auto-join-demo-hq.gif
 .e2e-*/
 graphify-out/
 .worktrees/
+.playwright-cli/
+.release-smoke-*/
+.tmp-v*-*/
+companion-plugin/obj/
 
 # PyInstaller and packaged release output
 build/
