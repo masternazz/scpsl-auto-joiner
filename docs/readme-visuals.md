@@ -9,8 +9,8 @@ py -3.13 assets/brand/render_readme_assets.py
 ```
 
 The script exports both MP4 and GIF versions. Product screenshots are captured
-at 4K from a high-DPI WebView. The live-app MP4 preserves 4K detail; its 1080px
-GIF uses a two-pass palette for sharp inline GitHub viewing. The
+at 4K from a high-DPI WebView. The focused live-app MP4 preserves 2880x1620
+detail; its 1080px GIF uses a two-pass palette for sharp inline GitHub viewing. The
 `demo-rendered` candidate is fully deterministic. The `demo-webview` candidate
 captures the shipped WebView UI using fictional data.
 

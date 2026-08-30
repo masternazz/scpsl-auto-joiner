@@ -8,7 +8,6 @@ temporary and are never kept in the repository.
 """
 from __future__ import annotations
 
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -33,11 +32,21 @@ def font(size: int, bold: bool = False):
 
 
 def product_hero(source: Path):
-    """Create a banner from the actual Auto-Join screen, not concept art."""
-    image = Image.open(source).convert("RGB")
-    # This is the Auto-Join content region at the fixed, wide sanitized capture
-    # size. It retains the real page heading, saved destination, and actions.
-    image.crop((750, 128, 3630, 1028)).save(OUT / "readme-hero.png")
+    """Create a product-led banner with an actual, legible app preview."""
+    screen = Image.open(source).convert("RGB")
+    image = Image.new("RGB", (1920, 600), "#0b0910")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((0, 0, 8, 600), fill="#a77dff")
+    draw.text((104, 142), "SCP:SL AUTO-JOINER", font=font(58, True), fill="#f8f4fb")
+    draw.text((108, 236), "Watch a saved server. Join when capacity opens.", font=font(28), fill="#c8bad5")
+    draw.text((109, 305), "WATCH MODE  /  SMART GROUPS  /  LOCAL-FIRST", font=font(17, True), fill="#a77dff")
+    draw.text((109, 456), "Windows 10 / 11  /  SCP: Secret Laboratory", font=font(18), fill="#8e809d")
+
+    # Downsample a high-DPI close-up instead of embedding a full desktop screen.
+    preview = screen.crop((880, 80, 3760, 1090)).resize((980, 344), Image.Resampling.LANCZOS)
+    draw.rounded_rectangle((835, 105, 1840, 474), radius=16, fill="#15101c", outline="#5a3f83", width=2)
+    image.paste(preview, (848, 118))
+    image.save(OUT / "readme-hero.png")
 
 
 def rendered_frame(frame: int, total: int) -> Image.Image:
@@ -161,12 +170,14 @@ def main():
             rendered_frame(index, 120).save(rendered / f"rendered-{index:03d}.png")
         make_video_and_gif(rendered, "rendered-%03d.png", "demo-rendered")
 
-        # Hold each of the four real UI states for three seconds.
+        # Crop the action area before animating. Full desktop captures make
+        # controls illegible once GitHub fits the GIF into the README column.
         for source in sorted(live.glob("live-*.png")):
+            focus = Image.open(source).convert("RGB").crop((700, 80, 3580, 1700))
             for copy in range(24):
                 target = live / f"sequence-{len(list(live.glob('sequence-*.png'))):03d}.png"
-                shutil.copyfile(source, target)
-        make_video_and_gif(live, "sequence-%03d.png", "demo-webview", output_width=3840, gif_width=1080)
+                focus.save(target)
+        make_video_and_gif(live, "sequence-%03d.png", "demo-webview", output_width=2880, gif_width=1080)
     print("README assets written to", OUT)
 
 
