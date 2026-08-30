@@ -153,6 +153,7 @@ The repository also includes the source renderer for the README walkthrough at `
 - [Security review](docs/security-review.md)
 - [Saved servers and groups](docs/server-groups.md)
 - [Known WebView2 startup/bridge issue](docs/known-issue-webview-startup.md)
+- [Private-server acceptance test](docs/private-server-acceptance.md)
 
 ## License
 
