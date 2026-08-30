@@ -142,8 +142,8 @@ The repository also includes the source renderer for the README walkthrough at `
 
 ## Project documentation
 
-- [Design specification](docs/superpowers/specs/2026-08-24-scpsl-autojoin-design.md)
-- [Implementation plan](docs/superpowers/plans/2026-08-24-scpsl-autojoin.md)
+- [Product design notes](docs/product-design.md)
+- [Implementation notes](docs/implementation-notes.md)
 - [Server name resolution research](docs/research/server-name-resolution.md)
 - [SCP:SL client and server browser research](docs/research/scpsl-client-server-browser.md)
 - [Background automation research](docs/background-automation-research.md)

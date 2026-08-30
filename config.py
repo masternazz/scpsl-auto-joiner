@@ -1,5 +1,4 @@
-"""Persisted settings for the auto-joiner: retry tuning + calibrated click
-points. See docs/superpowers/specs/2026-08-24-scpsl-autojoin-design.md."""
+"""Persisted settings for the auto-joiner: retry tuning and calibrated points."""
 import copy
 import json
 import os
