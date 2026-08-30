@@ -110,3 +110,22 @@ def test_app_state_recovers_corrupt_theme_and_pack_storage(tmp_path, monkeypatch
     assert state["packs"]["packs"] == []
     assert list(tmp_path.glob("themes.json.corrupt*"))
     assert list(tmp_path.glob("translation-packs.json.corrupt*"))
+
+
+def test_app_state_exposes_existing_legacy_servers_and_calibration(tmp_path, monkeypatch):
+    """The Web shell must surface, not hide, data created by the old Qt app."""
+    (tmp_path / "servers.json").write_text(
+        json.dumps({"Old private": {"ip": "127.0.0.1", "port": 7777}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "config.json").write_text(
+        json.dumps({"click_points": {"servers_tab": [100, 200]}}),
+        encoding="utf-8",
+    )
+
+    state = make_api(tmp_path, monkeypatch).get_app_state()
+
+    assert state["servers"][0]["name"] == "Old private"
+    assert state["calibration"]["points"]["servers_tab"] == [100, 200]
+    assert state["storage"]["migrated"] is True
+    assert state["storage"]["paths"]["servers"].endswith("servers.json")

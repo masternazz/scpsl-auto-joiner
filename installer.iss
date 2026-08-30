@@ -1,6 +1,6 @@
 #define MyAppName "SCP:SL Auto-Joiner"
 #define MyAppSafeName "SCP-SL Auto-Joiner"
-#define MyAppVersion "0.3.23"
+#define MyAppVersion "0.3.24"
 #define MyAppPublisher "MasterNazz"
 #define MyAppExeName "SCP-SL-Auto-Joiner.exe"
 
@@ -38,7 +38,7 @@ Name: "{group}\{#MyAppSafeName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppSafeName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);

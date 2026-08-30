@@ -21,7 +21,7 @@ from app_paths import app_dir
 from theme_manager import ThemeManager
 from translation_packs import PackError, PackManager
 
-APP_VERSION = "0.3.23"
+APP_VERSION = "0.3.24"
 
 
 def _translation_dir():
@@ -54,6 +54,31 @@ class WebApi:
     def _load_store(self):
         return server_store.load_store(self.store_path)
 
+    def _storage_state(self):
+        """Describe local data without changing it.
+
+        Older releases used a flat ``{name: {ip, port}}`` server file.  The
+        store loader already upgrades that format safely; the Web UI needs a
+        visible indication that it found that existing data rather than
+        appearing to start from an empty installation.
+        """
+        migrated = False
+        try:
+            with open(self.store_path, encoding="utf-8") as stream:
+                raw_store = json.load(stream)
+            migrated = isinstance(raw_store, dict) and "servers" not in raw_store
+        except (OSError, ValueError, TypeError):
+            pass
+        return {
+            "migrated": migrated,
+            "paths": {
+                "root": self.data_dir,
+                "servers": self.store_path,
+                "config": self.config_path,
+                "translations": self.translations_dir,
+            },
+        }
+
     def set_event_sink(self, sink):
         self._sink = sink
 
@@ -62,6 +87,7 @@ class WebApi:
             self._sink({"event": event, "data": data or {}})
 
     def _state(self):
+        storage = self._storage_state()
         cfg = self._load_config()
         store = self._load_store()
         return {
@@ -69,6 +95,7 @@ class WebApi:
             "settings": cfg, "calibration": self.get_calibration_state()["calibration"],
             "theme": self.theme_manager.load(), "packs": self.pack_manager.load(),
             "join": self.get_join_status()["join"],
+            "storage": storage,
         }
 
     def get_app_state(self):
