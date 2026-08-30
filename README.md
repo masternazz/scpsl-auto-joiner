@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/generated/demo-webview.gif" alt="Staged SCP:SL Auto-Joiner walkthrough: watching, confirming an open slot, connecting, and joining." width="720">
+  <img src="assets/generated/demo-webview.gif" alt="Staged SCP:SL Auto-Joiner walkthrough: watching, confirming an open slot, connecting, and joining." width="960">
 </p>
 
 <p align="center">

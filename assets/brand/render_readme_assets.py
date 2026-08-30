@@ -21,7 +21,10 @@ WEBUI = ROOT / "webui" / "index.html"
 OUT = ROOT / "assets" / "generated"
 OUT.mkdir(exist_ok=True)
 W, H = 1920, 1080
+# Render the UI at its proven wide-desktop layout, then capture at 1.5x DPI.
+# This produces 3840x2160 screenshots without shrinking the actual interface.
 CAPTURE_W, CAPTURE_H = 2560, 1440
+CAPTURE_SCALE = 1.5
 
 
 def font(size: int, bold: bool = False):
@@ -34,7 +37,7 @@ def product_hero(source: Path):
     image = Image.open(source).convert("RGB")
     # This is the Auto-Join content region at the fixed, wide sanitized capture
     # size. It retains the real page heading, saved destination, and actions.
-    image.crop((500, 85, 2420, 685)).save(OUT / "readme-hero.png")
+    image.crop((750, 128, 3630, 1028)).save(OUT / "readme-hero.png")
 
 
 def rendered_frame(frame: int, total: int) -> Image.Image:
@@ -108,7 +111,7 @@ def capture_webview_assets(temp: Path):
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         # Dense product pages are captured at their wide-desktop breakpoint.
-        page = browser.new_page(viewport={"width": CAPTURE_W, "height": CAPTURE_H}, device_scale_factor=1)
+        page = browser.new_page(viewport={"width": CAPTURE_W, "height": CAPTURE_H}, device_scale_factor=CAPTURE_SCALE)
         page.add_init_script(BRIDGE)
         page.goto(WEBUI.as_uri())
         page.wait_for_selector("h1")
@@ -134,14 +137,14 @@ def capture_webview_assets(temp: Path):
         browser.close()
 
 
-def make_video_and_gif(frames: Path, pattern: str, stem: str, fps: int = 8):
+def make_video_and_gif(frames: Path, pattern: str, stem: str, fps: int = 8, output_width: int = 1920, gif_width: int = 720):
     mp4 = OUT / f"{stem}.mp4"
     gif = OUT / f"{stem}.gif"
     palette = frames / f"{stem}-palette.png"
     source = str(frames / pattern)
-    subprocess.run(["ffmpeg", "-y", "-framerate", str(fps), "-i", source, "-vf", "scale=1920:1080:flags=lanczos", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(mp4)], check=True)
-    subprocess.run(["ffmpeg", "-y", "-i", str(mp4), "-vf", "fps=12,scale=720:-1:flags=lanczos,palettegen=max_colors=128", str(palette)], check=True)
-    subprocess.run(["ffmpeg", "-y", "-i", str(mp4), "-i", str(palette), "-lavfi", "fps=12,scale=720:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3", "-loop", "0", str(gif)], check=True)
+    subprocess.run(["ffmpeg", "-y", "-framerate", str(fps), "-i", source, "-vf", f"scale={output_width}:-2:flags=lanczos", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(mp4)], check=True)
+    subprocess.run(["ffmpeg", "-y", "-i", str(mp4), "-vf", f"fps=12,scale={gif_width}:-1:flags=lanczos,palettegen=max_colors=192", str(palette)], check=True)
+    subprocess.run(["ffmpeg", "-y", "-i", str(mp4), "-i", str(palette), "-lavfi", f"fps=12,scale={gif_width}:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3", "-loop", "0", str(gif)], check=True)
     palette.unlink(missing_ok=True)
 
 
@@ -163,7 +166,7 @@ def main():
             for copy in range(24):
                 target = live / f"sequence-{len(list(live.glob('sequence-*.png'))):03d}.png"
                 shutil.copyfile(source, target)
-        make_video_and_gif(live, "sequence-%03d.png", "demo-webview")
+        make_video_and_gif(live, "sequence-%03d.png", "demo-webview", output_width=3840, gif_width=1080)
     print("README assets written to", OUT)
 
 
