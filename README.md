@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/generated/readme-hero.png" alt="SCP:SL Auto-Joiner - Find the slot. Take the connection." width="100%">
+  <img src="assets/generated/readme-hero.png" alt="SCP:SL Auto-Joiner Auto-Join page with saved destination and Watch Mode controls." width="100%">
 </p>
 
 <p align="center">
@@ -15,13 +15,13 @@
 </p>
 
 <p align="center">
-  <img src="assets/generated/demo-rendered.gif" alt="Rendered Watch Mode demo: watch, confirm an open slot, connect, and join." width="720">
+  <img src="assets/generated/demo-webview.gif" alt="Staged SCP:SL Auto-Joiner walkthrough: watching, confirming an open slot, connecting, and joining." width="720">
 </p>
 
 <p align="center">
-  <a href="assets/generated/demo-rendered.mp4">View the 1080p rendered walkthrough</a>
+  <a href="assets/generated/demo-webview.mp4">View the 1080p app walkthrough</a>
   &nbsp;|&nbsp;
-  <a href="assets/generated/demo-webview.gif">Compare the staged WebView capture</a>
+  <a href="assets/generated/demo-rendered.gif">View the rendered storyboard</a>
   &nbsp;|&nbsp;
   <a href="docs/readme-visuals.md">Recreate these visuals</a>
 </p>

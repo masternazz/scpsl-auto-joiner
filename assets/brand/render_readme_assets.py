@@ -29,24 +29,12 @@ def font(size: int, bold: bool = False):
     return ImageFont.truetype(str(Path("C:/Windows/Fonts") / face), size)
 
 
-def hero():
-    image = Image.new("RGB", (W, 600), "#0b0910")
-    draw = ImageDraw.Draw(image)
-    for x in range(0, W, 96):
-        draw.line((x, 0, x, 600), fill="#18121f", width=1)
-    for y in range(0, 600, 96):
-        draw.line((0, y, W, y), fill="#18121f", width=1)
-    draw.rectangle((0, 0, 10, 600), fill="#a77dff")
-    draw.text((118, 135), "SCP:SL AUTO-JOINER", font=font(74, True), fill="#f8f4fb")
-    draw.text((122, 240), "Find the slot. Take the connection.", font=font(36), fill="#c8bad5")
-    draw.text((123, 318), "WATCH MODE  /  SMART GROUPS  /  LOCAL-FIRST", font=font(19, True), fill="#a77dff")
-    cx, cy = 1510, 300
-    for radius, color, width in ((195, "#2d2141", 4), (136, "#a77dff", 5), (78, "#f8f4fb", 3)):
-        draw.ellipse((cx-radius, cy-radius, cx+radius, cy+radius), outline=color, width=width)
-    draw.rounded_rectangle((cx-102, cy-48, cx+102, cy+48), radius=12, outline="#f8f4fb", width=5)
-    draw.rounded_rectangle((cx-50, cy-20, cx+50, cy+20), radius=5, fill="#a77dff")
-    draw.text((123, 475), "Windows 10 / 11  /  SCP: Secret Laboratory", font=font(20), fill="#8e809d")
-    image.save(OUT / "readme-hero.png")
+def product_hero(source: Path):
+    """Create a banner from the actual Auto-Join screen, not concept art."""
+    image = Image.open(source).convert("RGB")
+    # This is the Auto-Join content region at the fixed, wide sanitized capture
+    # size. It retains the real page heading, saved destination, and actions.
+    image.crop((500, 85, 2420, 685)).save(OUT / "readme-hero.png")
 
 
 def rendered_frame(frame: int, total: int) -> Image.Image:
@@ -158,17 +146,18 @@ def make_video_and_gif(frames: Path, pattern: str, stem: str, fps: int = 8):
 
 
 def main():
-    hero()
     with tempfile.TemporaryDirectory(prefix="scpsl-readme-") as raw:
         raw = Path(raw)
+        live = raw / "live"; live.mkdir()
+        capture_webview_assets(live)
+        product_hero(OUT / "readme-auto-join.png")
+
         rendered = raw / "rendered"; rendered.mkdir()
         # 15 seconds at 8 fps; duplicate frames keep each status readable.
         for index in range(120):
             rendered_frame(index, 120).save(rendered / f"rendered-{index:03d}.png")
         make_video_and_gif(rendered, "rendered-%03d.png", "demo-rendered")
 
-        live = raw / "live"; live.mkdir()
-        capture_webview_assets(live)
         # Hold each of the four real UI states for three seconds.
         for source in sorted(live.glob("live-*.png")):
             for copy in range(24):

@@ -13,8 +13,9 @@ detail; the 720px GIFs use a two-pass palette and are intended for inline
 GitHub viewing. The `demo-rendered` candidate is fully deterministic. The
 `demo-webview` candidate captures the shipped WebView UI using fictional data.
 
-`demo-rendered.gif` is the current README hero because it is deterministic and
-easy to review. `demo-webview.gif` remains a staged, real-UI alternative for a
-future swap. Review generated images and both GIFs before changing that choice.
+`demo-webview.gif` is the current README demo because it shows the real shipped
+UI driven with fictional data. `demo-rendered.gif` remains a deterministic
+storyboard alternative. Review generated images and both GIFs before changing
+that choice.
 Do not commit raw frame directories, recordings, private endpoints, tokens,
 local paths, or personal Discord details.
