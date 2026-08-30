@@ -144,6 +144,9 @@ The repository also includes the source renderer for the README walkthrough at `
 
 - [Product design notes](docs/product-design.md)
 - [Implementation notes](docs/implementation-notes.md)
+- [Architecture](docs/architecture.md)
+- [Development guide](docs/development.md)
+- [Contributing](.github/CONTRIBUTING.md)
 - [Server name resolution research](docs/research/server-name-resolution.md)
 - [SCP:SL client and server browser research](docs/research/scpsl-client-server-browser.md)
 - [Background automation research](docs/background-automation-research.md)
