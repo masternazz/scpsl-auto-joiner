@@ -121,3 +121,36 @@ nav{gap:4px}.nav-item{min-height:44px;padding:11px 12px;border:1px solid transpa
 .calibration-profiles{margin-top:18px}.actions-inline{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.profile-duplicate{display:flex;gap:10px;align-items:center;margin-top:16px}.profile-duplicate .input{max-width:260px}
 .readiness-pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.readiness-pills span{padding:5px 9px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:11px}
 .light-mode .nav-item.active{background:var(--accent);color:#fff}.light-mode .nav-item.active span{color:#fff}.light-mode .nav-item:hover:not(.active),.light-mode .nav-item:focus-visible:not(.active){background:#ded5e7;color:var(--text)}
+
+/* Purposeful UI motion: composited transform/opacity only, with the system
+   reduced-motion preference taking priority over the saved app preference. */
+:root{--motion-enter:260ms;--motion-ui:180ms;--motion-step:90ms;--motion-ease:cubic-bezier(.2,.8,.2,1)}
+html[data-motion="contained"]{--motion-enter:160ms;--motion-ui:140ms;--motion-step:0ms}
+html[data-motion="off"],html[data-motion-effective="off"]{--motion-enter:0ms;--motion-ui:0ms;--motion-step:0ms}
+@media(prefers-reduced-motion:reduce){html[data-motion]{--motion-enter:0ms;--motion-ui:0ms;--motion-step:0ms}}
+#content>.page{animation:page-enter var(--motion-enter) var(--motion-ease) both}
+.button,.nav-item,.palette-card,.mode-option,.server-row{transition:transform var(--motion-ui) var(--motion-ease),border-color var(--motion-ui) ease,background-color var(--motion-ui) ease,box-shadow var(--motion-ui) ease}
+.button:not(:disabled):active{transform:scale(.98)}
+.nav-item.active{transition:background-color var(--motion-ui) ease,box-shadow var(--motion-ui) ease,color var(--motion-ui) ease}
+.panel:not(.run-panel){transition:border-color var(--motion-ui) ease,box-shadow var(--motion-ui) ease,transform var(--motion-ui) var(--motion-ease)}
+.panel:not(.run-panel):hover{transform:translateY(-2px)}
+.run-panel{transition:border-color var(--motion-ui) ease,background-color var(--motion-ui) ease,box-shadow var(--motion-ui) ease;animation:status-enter var(--motion-enter) var(--motion-ease) both}
+.run-panel .step.current i{animation:step-focus calc(var(--motion-ui) + var(--motion-step)) var(--motion-ease) both}
+.run-panel.run-joined .run-state{animation:success-pop var(--motion-enter) var(--motion-ease) both}
+.log-line{display:block;animation:log-arrive var(--motion-enter) var(--motion-ease) both}
+.toast{transition:transform var(--motion-ui) var(--motion-ease),opacity var(--motion-ui) ease}
+.modal-backdrop:not([hidden]) .confirm-modal{animation:modal-enter var(--motion-enter) var(--motion-ease) both}
+.motion-preview{display:flex;align-items:center;gap:8px;height:22px;margin-top:14px;overflow:hidden}.motion-preview span{display:block;width:12px;height:12px;border-radius:50%;background:var(--accent);animation:motion-preview 1.4s var(--motion-ease) infinite}.motion-preview span:nth-child(2){animation-delay:120ms}.motion-preview span:nth-child(3){animation-delay:240ms}
+@keyframes page-enter{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+@keyframes status-enter{from{opacity:.7;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes step-focus{from{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}to{box-shadow:0 0 0 9px transparent}}
+@keyframes success-pop{0%{transform:scale(.96)}65%{transform:scale(1.04)}100%{transform:scale(1)}}
+@keyframes log-arrive{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes modal-enter{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:scale(1)}}
+@keyframes motion-preview{0%,100%{transform:translateX(0);opacity:.5}45%{transform:translateX(14px);opacity:1}}
+html[data-motion="contained"] .panel:not(.run-panel):hover{transform:none}
+html[data-motion="contained"] #content>.page{animation-name:contained-enter}
+html[data-motion="contained"] .motion-preview span{animation-name:contained-preview}
+@keyframes contained-enter{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+@keyframes contained-preview{0%,100%{opacity:.5}50%{opacity:1}}
+html[data-motion="off"] *,html[data-motion-effective="off"] *{animation-duration:0ms!important;animation-iteration-count:1!important;transition-duration:0ms!important}

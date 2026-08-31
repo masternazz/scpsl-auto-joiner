@@ -1,0 +1,8 @@
+-r requirements.txt
+
+# Browser/UI regression tests and README capture tooling
+playwright
+Pillow
+
+# Windows packaging
+pyinstaller

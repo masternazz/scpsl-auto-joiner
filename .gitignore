@@ -27,6 +27,11 @@ graphify-out/
 .release-smoke-*/
 .tmp-v*-*/
 companion-plugin/obj/
+/output/
+/prototypes/
+/assets/brand/remotion/
+/narrow-ui*.png
+/server-960.png
 
 # PyInstaller and packaged release output
 build/

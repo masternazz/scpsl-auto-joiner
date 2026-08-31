@@ -7,15 +7,20 @@ a server runtime.
 
 ## Before testing
 
-1. Start the private server and wait until its game port is listening.
-2. Confirm the host and game port from the server panel. Do not use a public
+1. Use the owner's private operations runbook to reach the authorized Pelican
+   panel or management host. Start the SCP:SL test server and wait until the
+   panel reports it running. Panel URLs, SSH aliases, server IDs, tokens, and
+   private endpoints do not belong in this public repository.
+2. Confirm from the Pelican console or authorized SSH session that startup has
+   completed and the expected game/query ports are listening.
+3. Confirm the host and game port from the server panel. Do not use a public
    server entry as a substitute.
-3. If using the optional companion, install the separately built plugin on the
+4. If using the optional companion, install the separately built plugin on the
    server and configure its owner-managed endpoint and token. The desktop app
    accepts loopback HTTP only for local testing; remote companion URLs must use
    HTTPS.
-4. Start SCP:SL on the test PC and launch the auto-joiner.
-5. Add or remember the private endpoint under **Servers**. Confirm its name and
+5. Start SCP:SL on the test PC and launch the auto-joiner.
+6. Add or remember the private endpoint under **Servers**. Confirm its name and
    port before starting any join.
 
 ## Required runs
@@ -31,5 +36,5 @@ DPI scale, window mode, and the generated app report. Remove tokens and other
 private data before sharing the report.
 
 If the game port is not reachable, the acceptance test cannot begin; check the
-hosting panel, firewall, port mapping, and server status rather than changing
-the client retry logic.
+Pelican console, Wings status, firewall, port mapping, and server status rather
+than changing the client retry logic.

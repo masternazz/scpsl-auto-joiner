@@ -42,6 +42,15 @@ def test_bridge_group_and_settings_persist(tmp_path, monkeypatch):
     assert api.delete_group(group["id"])["deleted"] is True
 
 
+def test_motion_preset_defaults_to_expressive_and_rejects_unknown_values(tmp_path, monkeypatch):
+    """A bad saved/UI motion value must never put the renderer in an undefined mode."""
+    api = make_api(tmp_path, monkeypatch)
+
+    assert api.get_settings()["settings"]["motion_preset"] == "expressive"
+    assert api.save_setting("motion_preset", "contained")["settings"]["motion_preset"] == "contained"
+    assert api.save_setting("motion_preset", "cinematic")["ok"] is False
+
+
 def test_start_join_resolves_a_saved_server_id_to_its_name(tmp_path, monkeypatch):
     api = make_api(tmp_path, monkeypatch)
     saved = api.save_server("Private", "127.0.0.1", 7777)["server"]

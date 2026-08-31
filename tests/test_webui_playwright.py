@@ -268,6 +268,31 @@ def test_webui_renders_watch_and_slot_candidate_states_in_the_run_timeline():
         browser.close()
 
 
+def test_motion_preference_updates_the_real_renderer_and_respects_reduced_motion():
+    """Changing the preference must affect the app root, while OS accessibility wins."""
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.add_init_script("""
+          window.motionCalls = [];
+          window.pywebview = {api: {
+            get_app_state: async () => ({ok:true,servers:[],groups:[],settings:{motion_preset:'expressive'},
+              calibration:{calibrated:false,points:{}},packs:{packs:[],active_pack:null},theme:{preset:'violet'}}),
+            save_setting: async (key, value) => { window.motionCalls.push([key, value]); return {ok:true,settings:{[key]:value}}; }
+          }};
+        """)
+        page.goto((ROOT / "webui" / "index.html").as_uri())
+        page.locator(".nav-item[data-page='settings']").click()
+        assert page.locator("#motionPreset").input_value() == "expressive"
+        page.locator("#motionPreset").select_option("contained")
+        page.wait_for_function("window.motionCalls.length === 1")
+        assert page.locator("html").get_attribute("data-motion") == "contained"
+        assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--motion-enter').trim()") == "160ms"
+        page.emulate_media(reduced_motion="reduce")
+        assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--motion-enter').trim()") == "0ms"
+        browser.close()
+
+
 def test_group_editor_saves_the_visible_member_order():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)

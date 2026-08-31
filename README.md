@@ -21,8 +21,6 @@
 <p align="center">
   <a href="assets/generated/demo-webview.mp4">View the 1080p app walkthrough</a>
   &nbsp;|&nbsp;
-  <a href="assets/generated/demo-rendered.gif">View the rendered storyboard</a>
-  &nbsp;|&nbsp;
   <a href="docs/readme-visuals.md">Recreate these visuals</a>
 </p>
 
@@ -133,9 +131,17 @@ See [the security review](docs/security-review.md), [destination sharing notes](
 
 ## For contributors
 
-The project is a Python backend with a local WebView UI. Read [development](docs/development.md), [architecture](docs/architecture.md), [product design](docs/product-design.md), and [release status](docs/roadmap-status.md) before changing behavior.
+The project is a Python backend with a local WebView UI. Start with the
+[documentation index](docs/index.md) and [maintainer handoff](docs/handoff.md),
+then read [development](docs/development.md), [architecture](docs/architecture.md),
+[product design](docs/product-design.md), and [release status](docs/roadmap-status.md)
+before changing behavior.
 
 ```powershell
+# Install all development, UI-test, capture, and packaging dependencies.
+py -3.13 -m pip install -r requirements-dev.txt
+py -3.13 -m playwright install chromium
+
 # Run the main test suite.
 py -3.13 -m pytest tests --ignore=tests/test_gui_flow.py -q
 

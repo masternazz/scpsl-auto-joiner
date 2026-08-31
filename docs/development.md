@@ -2,11 +2,17 @@
 
 ## Set up
 
-Use Python 3.13 on Windows 10 version 1809 or newer. Install dependencies with:
+Use Python 3.13 on Windows 10 version 1809 or newer. Install the complete
+development environment with:
 
 ```powershell
-py -3.13 -m pip install -r requirements.txt
+py -3.13 -m pip install -r requirements-dev.txt
+py -3.13 -m playwright install chromium
 ```
+
+`requirements.txt` is the desktop runtime set. `requirements-dev.txt` adds the
+browser-test, visual-capture, and packaging tools needed to reproduce the
+repository workflows.
 
 Start the development shell with:
 
@@ -37,4 +43,13 @@ one component.
 
 Before publishing, verify the executable starts, the archive contains the
 WebView resources and updater, the installer preserves AppData, and the
-release notes describe known limitations.
+release notes describe known limitations. Follow the complete
+[release process](release-process.md) rather than publishing directly from a
+stale `dist` directory.
+
+## Private acceptance infrastructure
+
+The repository does not contain Pelican/SSH credentials or private endpoints.
+An authorized maintainer must receive those through the owner's private
+operations runbook, then follow [private-server acceptance](private-server-acceptance.md).
+Public servers are never a substitute for that environment.

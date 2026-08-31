@@ -35,6 +35,7 @@ DEFAULTS = {
     "discord_enabled": False,
     "discord_share_players": False,
     "discord_application_id": "",
+    "motion_preset": "expressive",
     "accent": "violet",
     "custom_accent": "#b186ff",
     "click_points": {

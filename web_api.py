@@ -31,7 +31,7 @@ from translation_packs import PackError, PackManager
 from monitoring import BackgroundMonitor
 import secret_store
 
-APP_VERSION = os.environ.get("SCP_SL_APP_VERSION", "0.3.25")
+APP_VERSION = os.environ.get("SCP_SL_APP_VERSION", "0.3.33")
 
 
 def _translation_dir():
@@ -723,6 +723,8 @@ class WebApi:
             return {"ok": False, "error": "navigation_mode is invalid"}
         elif key == "connection_method" and value not in {"automatic", "foreground", "background", "direct"}:
             return {"ok": False, "error": "connection_method is invalid"}
+        elif key == "motion_preset" and value not in {"expressive", "contained", "off"}:
+            return {"ok": False, "error": "motion_preset is invalid"}
         elif key == "accent" and value not in {"violet", "amber", "slate", "cyan", "green", "red", "light", "light-warm", "light-slate", "custom"}:
             return {"ok": False, "error": "accent is invalid"}
         elif key == "custom_accent" and (not isinstance(value, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", value)):
