@@ -299,6 +299,50 @@ def test_discord_ipc_frames_activity_without_affecting_disabled_presence():
     assert presence.update("watching")["enabled"] is True
 
 
+def test_discord_presence_reports_when_discord_ipc_is_unavailable():
+    """The UI must not claim presence is live when Discord rejects IPC."""
+    from discord_presence import DiscordPresence
+
+    class OfflineIPC:
+        def set_activity(self, activity):
+            return False
+
+        def close(self):
+            return None
+
+    presence = DiscordPresence(ipc=OfflineIPC())
+    presence.set_enabled(True)
+    result = presence.update("watching")
+
+    assert result["ok"] is False
+    assert result["enabled"] is True
+    assert result["connected"] is False
+
+
+def test_discord_activity_uses_the_registered_s_mark_asset():
+    """The Discord payload names the same compact mark used by the desktop app."""
+    from discord_presence import DiscordPresence
+
+    class RecordingIPC:
+        def __init__(self):
+            self.activity = None
+
+        def set_activity(self, activity):
+            self.activity = activity
+            return True
+
+        def close(self):
+            return None
+
+    ipc = RecordingIPC()
+    presence = DiscordPresence(ipc=ipc)
+    presence.set_enabled(True)
+    result = presence.update("watching")
+
+    assert result["connected"] is True
+    assert ipc.activity["assets"]["large_image"] == "scpsl-autojoin-s"
+
+
 def test_discord_sharing_requires_global_and_server_permission(tmp_path):
     from web_api import WebApi
     api = WebApi(data_dir=tmp_path, translations_dir=tmp_path / "Translations")
@@ -308,6 +352,17 @@ def test_discord_sharing_requires_global_and_server_permission(tmp_path):
     api.save_setting("discord_share_players", True)
     api.save_server_profile(server["id"], {"share_presence": True})
     assert api.update_discord_presence("joined", server["id"], 7)["presence"]["players"] == 7
+
+
+def test_discord_application_id_is_saved_and_reconfigures_presence(tmp_path):
+    from web_api import WebApi
+    api = WebApi(data_dir=tmp_path, translations_dir=tmp_path / "Translations")
+
+    result = api.set_discord_application_id("123456789012345678")
+
+    assert result["ok"] is True
+    assert api.get_settings()["settings"]["discord_application_id"] == "123456789012345678"
+    assert api.discord.ipc.client_id == "123456789012345678"
 
 
 def test_successful_join_closes_watch_state_as_joined(tmp_path):

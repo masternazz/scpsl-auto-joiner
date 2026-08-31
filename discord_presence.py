@@ -55,6 +55,8 @@ class DiscordPresence:
         self.enabled = False
         self.current = None
         self.ipc = ipc or DiscordIPC(client_id)
+        self.connected = False
+        self.last_error = None
 
     def set_enabled(self, enabled):
         self.enabled = bool(enabled)
@@ -64,15 +66,26 @@ class DiscordPresence:
 
     def update(self, state, server_name=None, players=None, started_at=None, share=False):
         if not self.enabled:
-            return {"ok": True, "enabled": False}
+            return {"ok": True, "enabled": False, "connected": False}
         self.current = {"state": str(state), "server_name": str(server_name or ""), "players": players if share else None, "started_at": started_at}
-        activity = {"details": self.current["state"], "state": self.current["server_name"] or "SCP:SL Auto-Joiner"}
+        activity = {
+            "details": self.current["state"],
+            "state": self.current["server_name"] or "SCP:SL Auto-Joiner",
+            # Upload the app's S mark to the Discord Developer Portal with
+            # this key. Discord ignores an unavailable asset without exposing
+            # a local image path or endpoint.
+            "assets": {"large_image": "scpsl-autojoin-s", "large_text": "SCP:SL Auto-Joiner"},
+        }
         if self.current["players"] is not None:
             activity["state"] += f" · {self.current['players']} players"
-        self.ipc.set_activity(activity)
-        return {"ok": True, "enabled": True, "presence": dict(self.current)}
+        self.connected = bool(self.ipc.set_activity(activity))
+        self.last_error = None if self.connected else "Discord is not running or Rich Presence is not configured."
+        return {"ok": self.connected, "enabled": True, "connected": self.connected,
+                "presence": dict(self.current), "error": self.last_error}
 
     def clear(self):
         self.current = None
+        self.connected = False
+        self.last_error = None
         self.ipc.close()
         return {"ok": True}

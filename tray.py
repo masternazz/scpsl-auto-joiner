@@ -2,6 +2,8 @@
 import os
 import threading
 
+from app_paths import resource_path
+
 if os.name == "nt":
     import win32api
     import win32con
@@ -18,6 +20,7 @@ class NativeTray:
         self.hwnd = self.thread = self.failed = None
         self.ready = threading.Event()
         self._muted = False
+        self._icon = None
 
     def start(self):
         if os.name != "nt":
@@ -35,7 +38,11 @@ class NativeTray:
             try: win32gui.RegisterClass(wc)
             except win32gui.error: pass
             self.hwnd = win32gui.CreateWindow(name, "SCP:SL Auto-Joiner", 0, 0, 0, 0, 0, 0, 0, instance, None)
-            icon = win32gui.LoadIcon(0, win32con.IDI_APPLICATION)
+            icon_path = resource_path(os.path.join("assets", "app.ico"))
+            if os.path.isfile(icon_path):
+                self._icon = win32gui.LoadImage(None, icon_path, win32con.IMAGE_ICON, 0, 0,
+                                                 win32con.LR_LOADFROMFILE | win32con.LR_DEFAULTSIZE)
+            icon = self._icon or win32gui.LoadIcon(0, win32con.IDI_APPLICATION)
             flags = win32gui.NIF_MESSAGE | win32gui.NIF_ICON | win32gui.NIF_TIP
             win32gui.Shell_NotifyIcon(win32gui.NIM_ADD, (self.hwnd, 0, flags, self.WM_TRAY, icon, "SCP:SL Auto-Joiner"))
             self.ready.set(); win32gui.PumpMessages()
@@ -84,6 +91,10 @@ class NativeTray:
                 win32gui.Shell_NotifyIcon(win32gui.NIM_DELETE, (self.hwnd, 0))
                 win32api.PostMessage(self.hwnd, self.WM_EXIT, 0, 0)
             except Exception: pass
+        if self._icon:
+            try: win32gui.DestroyIcon(self._icon)
+            except Exception: pass
+            self._icon = None
 
 
 def install_tray(window, api):

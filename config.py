@@ -34,6 +34,7 @@ DEFAULTS = {
     "auto_update": False,
     "discord_enabled": False,
     "discord_share_players": False,
+    "discord_application_id": "",
     "accent": "violet",
     "custom_accent": "#b186ff",
     "click_points": {

@@ -40,6 +40,12 @@ def startup_trace(message):
         stream.write(f"{message}\n")
 
 
+def application_icon_path():
+    """Return the packaged S mark for Qt's title bar and Windows taskbar."""
+    icon = resource_path(os.path.join("assets", "app.ico"))
+    return icon if os.path.isfile(icon) else None
+
+
 class Bridge:
     """Small, explicit API surface exposed to WebView2.
 
@@ -71,7 +77,7 @@ class Bridge:
         "export_destination", "export_destination_link", "preview_destination", "import_destination", "import_destination_link",
         "save_calibration_profile", "set_active_calibration_profile", "delete_calibration_profile",
         "rename_calibration_profile", "duplicate_calibration_profile",
-        "set_discord_enabled", "clear_discord_presence",
+        "set_discord_enabled", "set_discord_application_id", "clear_discord_presence",
         "update_discord_presence",
         "search_translation_packs", "set_theme", "start_join", "start_remember",
         "stop_join", "stop_remember",
@@ -239,7 +245,7 @@ def main():
         # Qt WebEngine is bundled with the application. It avoids pywebview's
         # optional pythonnet/WinForms host, which can fail before WebView2 has
         # a chance to initialise in a frozen Python application.
-        webview.start(gui="qt", debug=not getattr(sys, "frozen", False),
+        webview.start(gui="qt", debug=not getattr(sys, "frozen", False), icon=application_icon_path(),
                       http_server=True, private_mode=True)
         return 0
     except Exception:

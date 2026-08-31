@@ -1,7 +1,7 @@
 # README visual maintenance
 
 The README visuals are generated from `assets/brand/render_readme_assets.py`.
-It creates a containment-style hero, sanitized WebView screenshots, and two
+It creates an S-mark product hero, sanitized WebView screenshots, and two
 demo candidates without reading personal app data or contacting a server.
 
 ```powershell

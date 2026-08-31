@@ -54,8 +54,9 @@ class WebApi:
         self._migrate_legacy_calibration()
         # Restore only the local preference. Discord IPC remains lazy and is
         # still harmless when Discord is not installed or running.
-        self.discord = DiscordPresence()
-        self.discord.set_enabled(bool(self._load_config().get("discord_enabled", False)))
+        discord_config = self._load_config()
+        self.discord = DiscordPresence(client_id=discord_config.get("discord_application_id") or None)
+        self.discord.set_enabled(bool(discord_config.get("discord_enabled", False)))
         self._sink = None
         self._join_thread = None
         self._join_stop = threading.Event()
@@ -470,7 +471,23 @@ class WebApi:
         return result
 
     def get_discord_status(self):
-        return {"ok": True, "enabled": self.discord.enabled, "presence": self.discord.current}
+        return {"ok": True, "enabled": self.discord.enabled, "connected": self.discord.connected,
+                "configured": bool(self.discord.ipc.client_id), "presence": self.discord.current,
+                "error": self.discord.last_error}
+
+    def set_discord_application_id(self, application_id):
+        """Store a public Discord application ID and rebuild the lazy IPC client."""
+        value = str(application_id or "").strip()
+        if value and not re.fullmatch(r"\d{17,20}", value):
+            return {"ok": False, "error": "Discord Application ID must be a 17-20 digit value."}
+        cfg = self._load_config()
+        cfg["discord_application_id"] = value
+        self._save_config(cfg)
+        enabled = bool(cfg.get("discord_enabled", False))
+        self.discord.clear()
+        self.discord = DiscordPresence(client_id=value or None)
+        self.discord.set_enabled(enabled)
+        return {"ok": True, "configured": bool(value), "enabled": enabled}
 
     def clear_discord_presence(self):
         return self.discord.clear()

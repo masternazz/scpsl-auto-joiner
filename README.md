@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/generated/readme-hero.png" alt="SCP:SL Auto-Joiner containment mark with Watch Mode, Smart Groups, and local-first tooling." width="100%">
+  <img src="assets/generated/readme-hero.png" alt="SCP:SL Auto-Joiner purple S mark with Watch Mode, Smart Groups, and local-first tooling." width="100%">
 </p>
 
 <p align="center">

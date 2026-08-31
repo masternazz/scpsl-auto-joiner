@@ -32,7 +32,7 @@ def font(size: int, bold: bool = False):
 
 
 def product_hero():
-    """Create a product-led banner anchored by the containment mark."""
+    """Create a product-led banner anchored by the app's S mark."""
     image = Image.new("RGB", (1920, 600), "#0b0910")
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, 0, 8, 600), fill="#a77dff")
@@ -43,7 +43,7 @@ def product_hero():
 
     # The mark keeps the hero legible at every GitHub width. Product UI belongs
     # in the walkthrough directly below it, where controls can be read.
-    mark = Image.open(OUT / "containment-mark-purple.png").convert("RGB")
+    mark = Image.open(ROOT / "assets" / "app-icon.png").convert("RGB")
     mark = mark.resize((360, 360), Image.Resampling.LANCZOS)
     image.paste(mark, (1360, 120))
     image.save(OUT / "readme-hero.png")
