@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+import os
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -158,6 +159,19 @@ def make_video_and_gif(frames: Path, pattern: str, stem: str, fps: int = 8, outp
     palette.unlink(missing_ok=True)
 
 
+def render_remotion_demo():
+    """Render the README Watch Mode explainer, then create its inline GIF."""
+    remotion = ROOT / "assets" / "brand" / "remotion"
+    mp4 = OUT / "demo-watch-mode.mp4"
+    gif = OUT / "demo-watch-mode.gif"
+    palette = OUT / "demo-watch-mode-palette.png"
+    npm = "npm.cmd" if os.name == "nt" else "npm"
+    subprocess.run([npm, "run", "render"], cwd=remotion, check=True)
+    subprocess.run(["ffmpeg", "-y", "-i", str(mp4), "-vf", "fps=15,scale=960:-2:flags=lanczos,palettegen=max_colors=192", str(palette)], check=True)
+    subprocess.run(["ffmpeg", "-y", "-i", str(mp4), "-i", str(palette), "-lavfi", "fps=15,scale=960:-2:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3", "-loop", "0", str(gif)], check=True)
+    palette.unlink(missing_ok=True)
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="scpsl-readme-") as raw:
         raw = Path(raw)
@@ -170,17 +184,7 @@ def main():
         for index in range(120):
             rendered_frame(index, 120).save(rendered / f"rendered-{index:03d}.png")
         make_video_and_gif(rendered, "rendered-%03d.png", "demo-rendered")
-
-        # Crop to the selected destination and the live state machine. This
-        # keeps the controls legible at GitHub's README width without adding a
-        # decorative status rail over the real application.
-        for index, source in enumerate(sorted(live.glob("live-*.png"))):
-            focus = Image.open(source).convert("RGB").crop((600, 140, 3540, 1580))
-            for copy in range(18):
-                frame = focus.copy()
-                target = live / f"sequence-{len(list(live.glob('sequence-*.png'))):03d}.png"
-                frame.save(target)
-        make_video_and_gif(live, "sequence-%03d.png", "demo-webview", output_width=2880, gif_width=1080)
+        render_remotion_demo()
     print("README assets written to", OUT)
 
 
