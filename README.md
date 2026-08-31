@@ -15,11 +15,11 @@
 </p>
 
 <p align="center">
-  <img src="assets/generated/demo-watch-mode.gif" alt="Animated SCP:SL Auto-Joiner Watch Mode walkthrough: watching, confirming an open slot, connecting, and joining." width="960">
+  <img src="assets/generated/demo-webview.gif" alt="Staged SCP:SL Auto-Joiner walkthrough: watching, confirming an open slot, connecting, and joining." width="960">
 </p>
 
 <p align="center">
-  <a href="assets/generated/demo-watch-mode.mp4">View the Remotion walkthrough</a>
+  <a href="assets/generated/demo-webview.mp4">View the 1080p app walkthrough</a>
   &nbsp;|&nbsp;
   <a href="assets/generated/demo-rendered.gif">View the rendered storyboard</a>
   &nbsp;|&nbsp;
