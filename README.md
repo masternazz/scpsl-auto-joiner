@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/generated/readme-hero.png" alt="SCP:SL Auto-Joiner Auto-Join page with saved destination and Watch Mode controls." width="100%">
+  <img src="assets/generated/readme-hero.png" alt="SCP:SL Auto-Joiner containment mark with Watch Mode, Smart Groups, and local-first tooling." width="100%">
 </p>
 
 <p align="center">

@@ -31,9 +31,8 @@ def font(size: int, bold: bool = False):
     return ImageFont.truetype(str(Path("C:/Windows/Fonts") / face), size)
 
 
-def product_hero(source: Path):
-    """Create a product-led banner with an actual, legible app preview."""
-    screen = Image.open(source).convert("RGB")
+def product_hero():
+    """Create a product-led banner anchored by the containment mark."""
     image = Image.new("RGB", (1920, 600), "#0b0910")
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, 0, 8, 600), fill="#a77dff")
@@ -42,10 +41,11 @@ def product_hero(source: Path):
     draw.text((109, 305), "WATCH MODE  /  SMART GROUPS  /  LOCAL-FIRST", font=font(17, True), fill="#a77dff")
     draw.text((109, 456), "Windows 10 / 11  /  SCP: Secret Laboratory", font=font(18), fill="#8e809d")
 
-    # Downsample a high-DPI close-up instead of embedding a full desktop screen.
-    preview = screen.crop((880, 80, 3760, 1090)).resize((980, 344), Image.Resampling.LANCZOS)
-    draw.rounded_rectangle((835, 105, 1840, 474), radius=16, fill="#15101c", outline="#5a3f83", width=2)
-    image.paste(preview, (848, 118))
+    # The mark keeps the hero legible at every GitHub width. Product UI belongs
+    # in the walkthrough directly below it, where controls can be read.
+    mark = Image.open(OUT / "containment-mark-purple.png").convert("RGB")
+    mark = mark.resize((360, 360), Image.Resampling.LANCZOS)
+    image.paste(mark, (1360, 120))
     image.save(OUT / "readme-hero.png")
 
 
@@ -162,7 +162,7 @@ def main():
         raw = Path(raw)
         live = raw / "live"; live.mkdir()
         capture_webview_assets(live)
-        product_hero(OUT / "readme-auto-join.png")
+        product_hero()
 
         rendered = raw / "rendered"; rendered.mkdir()
         # 15 seconds at 8 fps; duplicate frames keep each status readable.
@@ -172,11 +172,32 @@ def main():
 
         # Crop the action area before animating. Full desktop captures make
         # controls illegible once GitHub fits the GIF into the README column.
-        for source in sorted(live.glob("live-*.png")):
+        demo_states = (
+            ("WATCHING", "Monitoring capacity without game input", "#a77dff"),
+            ("SLOT CONFIRMED", "Confirming an available slot", "#e5aa56"),
+            ("CONNECTING", "Opening Direct Connect", "#a77dff"),
+            ("JOINED", "Connection accepted", "#65d49a"),
+        )
+        for index, source in enumerate(sorted(live.glob("live-*.png"))):
             focus = Image.open(source).convert("RGB").crop((700, 80, 3580, 1700))
+            state, detail, color = demo_states[index]
             for copy in range(24):
+                frame = focus.copy()
+                draw = ImageDraw.Draw(frame)
+                # A visible, deliberately staged status rail makes the animated
+                # sequence readable when GitHub scales the GIF into a README.
+                rail_top = 1450
+                draw.rectangle((0, rail_top, 2880, 1620), fill="#0b0910")
+                draw.text((86, 1480), f"WATCH MODE  /  {index + 1} OF 4", font=font(27, True), fill="#b9a3d7")
+                draw.text((86, 1524), state, font=font(46, True), fill=color)
+                draw.text((620, 1536), detail, font=font(31), fill="#e7dfee")
+                bar_left, bar_right = 86, 2770
+                bar_y = 1592
+                draw.rounded_rectangle((bar_left, bar_y, bar_right, bar_y + 12), radius=6, fill="#30213f")
+                progress = (index + (copy + 1) / 24) / len(demo_states)
+                draw.rounded_rectangle((bar_left, bar_y, bar_left + int((bar_right - bar_left) * progress), bar_y + 12), radius=6, fill=color)
                 target = live / f"sequence-{len(list(live.glob('sequence-*.png'))):03d}.png"
-                focus.save(target)
+                frame.save(target)
         make_video_and_gif(live, "sequence-%03d.png", "demo-webview", output_width=2880, gif_width=1080)
     print("README assets written to", OUT)
 
