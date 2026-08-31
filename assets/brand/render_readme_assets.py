@@ -32,20 +32,21 @@ def font(size: int, bold: bool = False):
 
 
 def product_hero():
-    """Create a product-led banner anchored by the app's S mark."""
-    image = Image.new("RGB", (1920, 600), "#0b0910")
+    """Create a compact product-led banner anchored by the app's S mark."""
+    image = Image.new("RGB", (1920, 520), "#0b0910")
     draw = ImageDraw.Draw(image)
-    draw.rectangle((0, 0, 8, 600), fill="#a77dff")
-    draw.text((104, 142), "SCP:SL AUTO-JOINER", font=font(58, True), fill="#f8f4fb")
-    draw.text((108, 236), "Watch a saved server. Join when capacity opens.", font=font(28), fill="#c8bad5")
-    draw.text((109, 305), "WATCH MODE  /  SMART GROUPS  /  LOCAL-FIRST", font=font(17, True), fill="#a77dff")
-    draw.text((109, 456), "Windows 10 / 11  /  SCP: Secret Laboratory", font=font(18), fill="#8e809d")
+    draw.rectangle((0, 0, 8, 520), fill="#a77dff")
+    draw.line((628, 82, 628, 438), fill="#322442", width=2)
+    draw.text((708, 120), "SCP:SL AUTO-JOINER", font=font(60, True), fill="#f8f4fb")
+    draw.text((712, 214), "Watch a saved server. Join when capacity opens.", font=font(29), fill="#c8bad5")
+    draw.text((713, 280), "WATCH MODE  /  SMART GROUPS  /  LOCAL-FIRST", font=font(17, True), fill="#a77dff")
+    draw.text((713, 374), "Windows 10 / 11  /  SCP: Secret Laboratory", font=font(18), fill="#8e809d")
 
     # The mark keeps the hero legible at every GitHub width. Product UI belongs
     # in the walkthrough directly below it, where controls can be read.
     mark = Image.open(ROOT / "assets" / "app-icon.png").convert("RGB")
-    mark = mark.resize((360, 360), Image.Resampling.LANCZOS)
-    image.paste(mark, (1360, 120))
+    mark = mark.resize((272, 272), Image.Resampling.LANCZOS)
+    image.paste(mark, (308, 124))
     image.save(OUT / "readme-hero.png")
 
 
@@ -170,32 +171,13 @@ def main():
             rendered_frame(index, 120).save(rendered / f"rendered-{index:03d}.png")
         make_video_and_gif(rendered, "rendered-%03d.png", "demo-rendered")
 
-        # Crop the action area before animating. Full desktop captures make
-        # controls illegible once GitHub fits the GIF into the README column.
-        demo_states = (
-            ("WATCHING", "Monitoring capacity without game input", "#a77dff"),
-            ("SLOT CONFIRMED", "Confirming an available slot", "#e5aa56"),
-            ("CONNECTING", "Opening Direct Connect", "#a77dff"),
-            ("JOINED", "Connection accepted", "#65d49a"),
-        )
+        # Crop to the selected destination and the live state machine. This
+        # keeps the controls legible at GitHub's README width without adding a
+        # decorative status rail over the real application.
         for index, source in enumerate(sorted(live.glob("live-*.png"))):
-            focus = Image.open(source).convert("RGB").crop((700, 80, 3580, 1700))
-            state, detail, color = demo_states[index]
-            for copy in range(24):
+            focus = Image.open(source).convert("RGB").crop((600, 140, 3540, 1580))
+            for copy in range(18):
                 frame = focus.copy()
-                draw = ImageDraw.Draw(frame)
-                # A visible, deliberately staged status rail makes the animated
-                # sequence readable when GitHub scales the GIF into a README.
-                rail_top = 1450
-                draw.rectangle((0, rail_top, 2880, 1620), fill="#0b0910")
-                draw.text((86, 1480), f"WATCH MODE  /  {index + 1} OF 4", font=font(27, True), fill="#b9a3d7")
-                draw.text((86, 1524), state, font=font(46, True), fill=color)
-                draw.text((620, 1536), detail, font=font(31), fill="#e7dfee")
-                bar_left, bar_right = 86, 2770
-                bar_y = 1592
-                draw.rounded_rectangle((bar_left, bar_y, bar_right, bar_y + 12), radius=6, fill="#30213f")
-                progress = (index + (copy + 1) / 24) / len(demo_states)
-                draw.rounded_rectangle((bar_left, bar_y, bar_left + int((bar_right - bar_left) * progress), bar_y + 12), radius=6, fill=color)
                 target = live / f"sequence-{len(list(live.glob('sequence-*.png'))):03d}.png"
                 frame.save(target)
         make_video_and_gif(live, "sequence-%03d.png", "demo-webview", output_width=2880, gif_width=1080)

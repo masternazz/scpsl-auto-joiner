@@ -15,11 +15,21 @@ function pageHead(title,description){return `<header class="page-head"><div><h1>
 function sectionTitle(title,description=''){return `<div class="section-heading"><h2>${title}</h2>${description?`<p>${description}</p>`:''}</div>`}
 function rememberControl(id='rememberCurrentServer',compact=false){const statusId=id==='rememberServerFromLog'?'rememberServerStatus':`${id}Status`;return `<div class="remember-control ${compact?'compact':''}"><button class="button secondary remember-action" id="${id}" title="Detect the next server you join and fill in its public name and address."><strong>Remember current server</strong><span>Start detection, then join normally in SCP:SL.</span></button><small class="technical-note" id="${statusId}">Uses the game's local connection record. Nothing is uploaded.</small></div>`}
 
+function runVisual(label){
+  return {
+    READY:{phase:0,tone:'ready'}, WATCHING:{phase:1,tone:'watching'},
+    'SLOT CANDIDATE':{phase:2,tone:'slot-candidate'}, CONNECTING:{phase:3,tone:'connecting'},
+    RETRYING:{phase:4,tone:'retrying'}, JOINED:{phase:5,tone:'joined'}, FAILED:{phase:0,tone:'failed'}
+  }[label]||{phase:0,tone:'ready'};
+}
+function runSummary(label){return {READY:'Choose a destination, then start when you are ready.',WATCHING:'Checking capacity before opening the game.', 'SLOT CANDIDATE':'Confirming the available slot with a second sample.',CONNECTING:'Opening Direct Connect for the selected destination.',RETRYING:'Waiting for the next retry window.',JOINED:'The server accepted the connection.',FAILED:'The last run stopped before a connection was confirmed.'}[label]||'Waiting for a run.'}
+
 function joinV2(){
   const type=selectedTarget.type,options=type==='group'?state.groups:state.servers;
   const id=selectedTarget.id||options[0]?.id||'',target=options.find(item=>item.id===id);
   const detail=type==='group'?(target?`${target.server_ids.length} saved servers, tried in order`:'No retry group selected'):(target?`${target.ip}:${target.port}`:'No saved server selected');
   const steps=['SELECT','LAUNCH','CONNECT','FULL','RETRY','JOINED'];
+  const visual=runVisual(runState.label);
   return `<section class="page join-page">${pageHead('Auto-Join','Choose a saved server or retry group. The app keeps trying until SCP:SL accepts the connection.')}
     <div class="join-command panel selected">
       <div class="destination-fields"><label class="field"><span>DESTINATION TYPE</span><select class="input" id="targetType"><option value="server" ${type==='server'?'selected':''}>Saved server</option><option value="group" ${type==='group'?'selected':''}>Retry group</option></select></label><label class="field"><span>DESTINATION</span><select class="input" id="targetSelect">${options.map(item=>`<option value="${esc(item.id)}" ${item.id===id?'selected':''}>${esc(item.name)}</option>`).join('')}</select></label></div>
@@ -27,7 +37,7 @@ function joinV2(){
       <div class="command-actions"><button class="button primary" id="start" ${target?'':'disabled'}>Start auto-join</button><button class="button" id="stop">Stop</button><button class="button" data-go="servers">Manage destinations</button></div>
     </div>
     <div class="join-support-grid">
-      <section class="panel run-panel"><div class="feed-head"><span>RUN STATUS</span><strong class="status run-state">${esc(runState.label)}</strong></div><div class="timeline">${steps.map((step,index)=>`<div class="step ${index<1?'done':''}"><i></i>${step}</div>`).join('')}</div><p class="run-summary">${runState.attempt?`Attempt ${runState.attempt} · `:''}Retry delay: ${state.settings.retry_interval_s??2} seconds.</p><div class="feed"><div class="feed-head"><span>LIVE ACTIVITY</span><span>${events.length} EVENTS</span></div><div class="log">${events.map(esc).join('<br>')||'Waiting for a run.'}</div></div></section>
+      <section class="panel run-panel run-${visual.tone}"><div class="feed-head"><span>RUN STATUS</span><strong class="status run-state">${esc(runState.label)}</strong></div><div class="timeline">${steps.map((step,index)=>`<div class="step ${index<visual.phase?'done':index===visual.phase?'current':''}"><i></i>${step}</div>`).join('')}</div><p class="run-summary">${runState.attempt?`Attempt ${runState.attempt} · `:''}${esc(runSummary(runState.label))}</p><div class="feed"><div class="feed-head"><span>LIVE ACTIVITY</span><span>${events.length} EVENTS</span></div><div class="log">${events.map(esc).join('<br>')||'Waiting for a run.'}</div></div></section>
       <aside class="panel quick-actions">${sectionTitle('Save the server you are playing','Detect its address and public name automatically, then review it before saving.')} ${rememberControl()}<div class="divider"></div>${sectionTitle(state.calibration.calibrated?'Calibration ready':'Automatic positioning active','Calibration is only needed if the game controls are missed after a display or layout change.')}<button class="button" data-go="diagnostics">Open diagnostics</button></aside>
     </div>
   </section>`;

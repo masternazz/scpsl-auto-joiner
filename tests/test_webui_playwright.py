@@ -244,6 +244,30 @@ def test_webui_renders_structured_retry_and_join_events_in_run_state():
         browser.close()
 
 
+def test_webui_renders_watch_and_slot_candidate_states_in_the_run_timeline():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.set_default_timeout(3_000)
+        page.add_init_script("""
+          window.pywebview = {api: {
+            get_app_state: async () => ({ok:true,servers:[{id:'s1',name:'Private',ip:'127.0.0.1',port:7777}],groups:[],settings:{retry_interval_s:2},
+              calibration:{calibrated:false,points:{}},packs:{packs:[],active_pack:null},theme:{preset:'violet'}})
+          }};
+        """)
+        page.goto((ROOT / "webui" / "index.html").as_uri())
+        page.wait_for_selector("#start")
+        page.evaluate("window.__appEvent({event:'watching',data:{message:'Watching Private / 18 of 20 players'}})")
+        assert page.locator(".run-state").inner_text() == "WATCHING"
+        assert "run-watching" in page.locator(".run-panel").get_attribute("class")
+        assert page.locator(".timeline .step.current").count() == 1
+        page.evaluate("window.__appEvent({event:'slot_candidate',data:{message:'Slot candidate detected / confirming'}})")
+        assert page.locator(".run-state").inner_text() == "SLOT CANDIDATE"
+        assert "run-slot-candidate" in page.locator(".run-panel").get_attribute("class")
+        assert page.locator(".timeline .step.done").count() >= 2
+        browser.close()
+
+
 def test_group_editor_saves_the_visible_member_order():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
