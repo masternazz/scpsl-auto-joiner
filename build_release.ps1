@@ -1,4 +1,4 @@
-param([string]$Version = $(if ($env:SCP_SL_RELEASE_VERSION) { $env:SCP_SL_RELEASE_VERSION } else { "0.3.33" }))
+param([string]$Version = $(if ($env:SCP_SL_RELEASE_VERSION) { $env:SCP_SL_RELEASE_VERSION } else { "0.3.34" }))
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 

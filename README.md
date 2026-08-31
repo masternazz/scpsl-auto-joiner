@@ -33,13 +33,14 @@
 
 Watch Mode checks the saved server first. It does not touch SCP:SL until capacity is detected and confirmed. Immediate Auto-Join remains available for the normal retry flow.
 
-## What is new in v0.3.33
+## What is new in v0.3.34
 
 - **Watch Mode** waits for an available slot before interacting with SCP:SL.
 - **Server history and insights** retain local availability, player-count, and latency observations.
 - **Smart retry groups** can retry in order, choose the first available server, or prefer lower latency with population limits.
 - **Destination bundles** provide previewed, privacy-limited server and group sharing.
 - **Discord Rich Presence** is optional and off by default; each server must be explicitly shared before its name or a Join request is visible.
+- **Discord reliability** keeps named-pipe connect, update, and shutdown work off the app thread, so Discord being slow or unavailable cannot freeze the desktop app.
 - **Calibration profiles** keep separate client-relative targets for different display setups.
 - **Translation packs** support local folders, ZIP files, links, GitHub discovery, backups, and user-requested update checks.
 - **Owned-server companion support** is separate, opt-in, and intended for servers you own or are authorized to manage.
@@ -149,7 +150,7 @@ py -3.13 -m pytest tests --ignore=tests/test_gui_flow.py -q
 py -3.13 -m pytest tests/test_gui_flow.py -q
 
 # Build a versioned portable ZIP and, when Inno Setup is installed, the setup installer.
-.\build_release.ps1 -Version 0.3.33
+.\build_release.ps1 -Version 0.3.34
 
 # Regenerate the public README visuals with fictional data only.
 py -3.13 assets\brand\render_readme_assets.py

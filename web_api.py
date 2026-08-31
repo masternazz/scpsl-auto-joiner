@@ -31,7 +31,7 @@ from translation_packs import PackError, PackManager
 from monitoring import BackgroundMonitor
 import secret_store
 
-APP_VERSION = os.environ.get("SCP_SL_APP_VERSION", "0.3.33")
+APP_VERSION = os.environ.get("SCP_SL_APP_VERSION", "0.3.34")
 
 
 def _translation_dir():

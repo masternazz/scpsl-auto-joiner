@@ -51,7 +51,7 @@ def product_hero():
 
 BRIDGE = """
 window.pywebview = {api: {
- get_app_state: async () => ({ok:true,version:'0.3.33', servers:[
+ get_app_state: async () => ({ok:true,version:'0.3.34', servers:[
   {id:'srv-1',name:'Masternazz Private',ip:'sanitized.example',port:7777,status:{players:18,max_players:20,latency_ms:28},monitoring:{enabled:true,query_interval_s:2},join_profile:{},share_presence:false},
   {id:'srv-2',name:'Containment Reserve',ip:'reserve.example',port:7778,status:{players:12,max_players:20,latency_ms:43},monitoring:{enabled:false},join_profile:{},share_presence:false}],
  groups:[{id:'group-1',name:'Evening queue',server_ids:['srv-1','srv-2'],policy:{strategy:'first_available',minimum_players:0,maximum_fill_percent:90,loop:true}}],

@@ -13,6 +13,7 @@ This page maps the cumulative roadmap to the implementation and release artifact
 | v0.3.31 | User-initiated translation updates | `translation_updates.py`, `translation_packs.py` | repository/release metadata and staged replacement tests |
 | v0.3.32 | Separate owned-server LabAPI companion | `companion-plugin/`, `companion_client.py`, `companion_server.py` | protocol, token, HTTPS, rate-limit, and fallback tests |
 | v0.3.33 | WebView Auto-Join saved-server routing fix | `web_api.py` | bridge regression test and private-server acceptance test |
+| v0.3.34 | Discord IPC startup, update, and shutdown reliability | `discord_presence.py` | stalled pipe, write, close, and live Discord IPC checks |
 
 ## Verification boundaries
 

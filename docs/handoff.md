@@ -10,7 +10,7 @@ that produced it.
 - Explicit legacy fallback: `py -3.13 app_web.py --legacy-ui`
 - Desktop/backend API: `web_api.py`
 - Browser UI: `webui/`
-- Current public release line: `v0.3.33`
+- Current public release line: `v0.3.34`
 - User data root: `%LOCALAPPDATA%\SCP-SL-Auto-Joiner`
 - Release identity: the Inno Setup `AppId` in `installer.iss`; never change it
   for a normal upgrade.
