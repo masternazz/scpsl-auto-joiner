@@ -246,6 +246,27 @@ def test_webui_renders_structured_retry_and_join_events_in_run_state():
         browser.close()
 
 
+def test_live_join_events_do_not_recreate_the_auto_join_page():
+    """Status motion must stay inside the run panel instead of blinking the page."""
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.add_init_script("""
+          window.pywebview = {api: {
+            get_app_state: async () => ({ok:true,servers:[{id:'s1',name:'Private',ip:'127.0.0.1',port:7777}],groups:[],settings:{retry_interval_s:2},
+              calibration:{calibrated:false,points:{}},packs:{packs:[],active_pack:null},theme:{preset:'violet'}})
+          }};
+        """)
+        page.goto((ROOT / "webui" / "index.html").as_uri())
+        page.wait_for_selector(".run-panel")
+        page.evaluate("window.runPanelBeforeEvent = document.querySelector('.run-panel')")
+
+        page.evaluate("window.__appEvent({event:'watching',data:{message:'Watching Private'}})")
+
+        assert page.evaluate("window.runPanelBeforeEvent === document.querySelector('.run-panel')") is True
+        browser.close()
+
+
 def test_webui_renders_watch_and_slot_candidate_states_in_the_run_timeline():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)

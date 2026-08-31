@@ -30,6 +30,20 @@ function runVisual(label){
 }
 function runSummary(label){return {READY:'Choose a destination, then start when you are ready.',WATCHING:'Checking capacity before opening the game.', 'SLOT CANDIDATE':'Confirming the available slot with a second sample.',CONNECTING:'Opening Direct Connect for the selected destination.',RETRYING:'Waiting for the next retry window.',JOINED:'The server accepted the connection.',FAILED:'The last run stopped before a connection was confirmed.'}[label]||'Waiting for a run.'}
 
+function refreshJoinRun(){
+  const panel=document.querySelector('.run-panel');
+  if(!panel)return false;
+  const visual=runVisual(runState.label),steps=['SELECT','LAUNCH','CONNECT','FULL','RETRY','JOINED'];
+  panel.className=`panel run-panel run-${visual.tone}`;
+  const stateLabel=panel.querySelector('.run-state');if(stateLabel)stateLabel.textContent=runState.label;
+  const summary=panel.querySelector('.run-summary');if(summary)summary.textContent=`${runState.attempt?`Attempt ${runState.attempt} · `:''}${runSummary(runState.label)}`;
+  const timeline=panel.querySelector('.timeline');if(timeline)timeline.innerHTML=steps.map((step,index)=>`<div class="step ${index<visual.phase?'done':index===visual.phase?'current':''}"><i></i>${step}</div>`).join('');
+  const log=panel.querySelector('.log');if(log)log.innerHTML=events.map(event=>`<span class="log-line">${esc(event)}</span>`).join('')||'Waiting for a run.';
+  const count=panel.querySelector('.feed .feed-head span:last-child');if(count)count.textContent=`${events.length} EVENTS`;
+  return true;
+}
+window.refreshJoinRun=refreshJoinRun;
+
 function joinV2(){
   const type=selectedTarget.type,options=type==='group'?state.groups:state.servers;
   const id=selectedTarget.id||options[0]?.id||'',target=options.find(item=>item.id===id);
