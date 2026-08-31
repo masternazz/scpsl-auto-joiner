@@ -44,9 +44,9 @@ def product_hero():
 
     # The mark keeps the hero legible at every GitHub width. Product UI belongs
     # in the walkthrough directly below it, where controls can be read.
-    mark = Image.open(ROOT / "assets" / "app-icon.png").convert("RGB")
+    mark = Image.open(ROOT / "assets" / "app-icon.png").convert("RGBA")
     mark = mark.resize((272, 272), Image.Resampling.LANCZOS)
-    image.paste(mark, (308, 124))
+    image.paste(mark, (308, 124), mark)
     image.save(OUT / "readme-hero.png")
 
 
