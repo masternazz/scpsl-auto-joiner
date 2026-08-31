@@ -39,7 +39,7 @@ Watch Mode checks the saved server first. It does not touch SCP:SL until capacit
 - **Server history and insights** retain local availability, player-count, and latency observations.
 - **Smart retry groups** can retry in order, choose the first available server, or prefer lower latency with population limits.
 - **Destination bundles** provide previewed, privacy-limited server and group sharing.
-- **Discord Rich Presence** is optional and off by default; server details require an additional per-server opt-in.
+- **Discord Rich Presence** is optional and off by default; each server must be explicitly shared before its name or a Join request is visible.
 - **Calibration profiles** keep separate client-relative targets for different display setups.
 - **Translation packs** support local folders, ZIP files, links, GitHub discovery, backups, and user-requested update checks.
 - **Owned-server companion support** is separate, opt-in, and intended for servers you own or are authorized to manage.
@@ -103,11 +103,11 @@ The activity log and retry timeline show what the app thinks happened: watching,
 
 - The application is local-first. Saved servers, groups, history, settings, calibration profiles, themes, text-pack records, and bug reports remain in local AppData.
 - It does not use injection, OCR, memory inspection, packet manipulation, or a hosted application backend.
-- Discord presence is disabled by default. A visible server name or player count requires both global and per-server permission. Raw endpoints are not shown in Discord text.
+- Discord presence is disabled by default. A visible server name or Join request requires per-server permission; a player count additionally requires the global player-count setting. Raw endpoints are not shown in Discord text, and Discord Join opens an import preview instead of joining automatically.
 - Destination bundles exclude passwords, tokens, local IDs, calibration, history, themes, and other local settings. Every import has a preview before it is saved or joined.
 - The optional LabAPI companion is for owned or authorized servers only. It is a separate plugin, never installed automatically, and public-server role detection is not a feature of this app.
 
-See [the security review](docs/security-review.md), [destination sharing notes](docs/roadmap-status.md), and the [owned-server companion guide](docs/owned-server-companion.md) for details.
+See [the security review](docs/security-review.md), [destination sharing notes](docs/roadmap-status.md), the [Discord Rich Presence guide](docs/discord-rich-presence.md), and the [owned-server companion guide](docs/owned-server-companion.md) for details.
 
 ## Requirements and limitations
 

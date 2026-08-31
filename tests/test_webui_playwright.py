@@ -106,6 +106,8 @@ def test_webui_exposes_monitoring_discord_and_destination_tools():
         page.locator(".nav-item[data-page='settings']").click()
         assert page.locator("#backgroundMonitor").count() == 1
         assert page.locator("#discordPresence").count() == 1
+        assert "Never paste a client secret" in page.locator("#discordApplication").inner_text()
+        assert "Names and Join requests stay private" in page.locator("#discordPlayerSharing").inner_text()
         page.locator(".nav-item[data-page='servers']").click()
         assert page.locator("#destinationTools").count() == 1
         page.locator("#destinationInput").fill('{"schema":"scpsl-autojoin.destination"}')

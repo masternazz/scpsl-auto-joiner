@@ -23,6 +23,7 @@ release records. Start here when taking over the project.
 - [Known WebView startup issue](known-issue-webview-startup.md)
 - [README visual maintenance](readme-visuals.md)
 - [Owned-server companion](owned-server-companion.md)
+- [Discord Rich Presence](discord-rich-presence.md)
 - [Security review](security-review.md)
 
 ## Historical material

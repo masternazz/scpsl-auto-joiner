@@ -1,4 +1,5 @@
 import json
+import threading
 
 
 def test_store_v2_migrates_profiles_and_group_policies(tmp_path):
@@ -352,6 +353,83 @@ def test_discord_sharing_requires_global_and_server_permission(tmp_path):
     api.save_setting("discord_share_players", True)
     api.save_server_profile(server["id"], {"share_presence": True})
     assert api.update_discord_presence("joined", server["id"], 7)["presence"]["players"] == 7
+
+
+def test_discord_presence_hides_a_server_until_that_server_is_explicitly_shareable(tmp_path):
+    from web_api import WebApi
+
+    api = WebApi(data_dir=tmp_path, translations_dir=tmp_path / "Translations")
+    server = api.save_server("Private", "127.0.0.1", 7777)["server"]
+    api.set_discord_enabled(True)
+
+    hidden = api.update_discord_presence("watching", server["id"], 7)
+
+    assert hidden["presence"]["server_name"] == ""
+
+
+def test_discord_shareable_server_includes_an_opaque_review_only_join_secret(tmp_path):
+    from discord_presence import DiscordPresence
+    from destinations import decode_link
+    from web_api import WebApi
+
+    class RecordingIPC:
+        def set_activity(self, activity):
+            self.activity = activity
+            return True
+
+        def close(self):
+            return None
+
+    api = WebApi(data_dir=tmp_path, translations_dir=tmp_path / "Translations")
+    server = api.save_server("Private", "127.0.0.1", 7777)["server"]
+    ipc = RecordingIPC()
+    api.discord = DiscordPresence(ipc=ipc, on_join=api._handle_discord_join)
+    api.set_discord_enabled(True)
+    api.save_server_profile(server["id"], {"share_presence": True})
+    api.save_setting("discord_share_players", True)
+
+    result = api.update_discord_presence("watching", server["id"], 7, 25, 100)
+
+    assert result["presence"]["join_available"] is True
+    assert decode_link(ipc.activity["secrets"]["join"])["servers"][0]["name"] == "Private"
+    assert ipc.activity["party"]["size"] == [7, 25]
+
+
+def test_discord_join_request_only_opens_the_existing_import_preview(tmp_path):
+    from destinations import encode_link, export_bundle
+    from web_api import WebApi
+
+    events = []
+    api = WebApi(data_dir=tmp_path, translations_dir=tmp_path / "Translations")
+    api.set_event_sink(events.append)
+    secret = encode_link(export_bundle("Friend", [{"name": "Friend", "host": "127.0.0.1", "port": 7777}]))
+
+    assert api._handle_discord_join(secret) is True
+    assert events == [{"event": "destination_import_requested", "data": {"raw": secret, "source": "discord"}}]
+    assert api.get_servers()["servers"] == []
+
+
+def test_discord_ipc_dispatches_a_join_secret_from_a_local_pipe():
+    from discord_presence import DiscordIPC
+
+    class ReadPipe:
+        def __init__(self, data):
+            self.data = bytearray(data)
+
+        def read(self, size):
+            value = bytes(self.data[:size])
+            del self.data[:size]
+            return value
+
+    received = []
+    ipc = DiscordIPC(on_join=received.append)
+    event = {"cmd": "DISPATCH", "data": {"evt": "ACTIVITY_JOIN", "data": {"secret": "scpsl-autojoin://import?data=test"}}}
+    ipc.connection = ReadPipe(DiscordIPC.frame(1, event))
+    ipc._reader = threading.current_thread()
+
+    ipc._read_events()
+
+    assert received == ["scpsl-autojoin://import?data=test"]
 
 
 def test_discord_application_id_is_saved_and_reconfigures_presence(tmp_path):

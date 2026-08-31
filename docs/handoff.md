@@ -50,7 +50,7 @@ maintainer's real AppData or a public SCP:SL server.
 | Saved destinations | `server_store.py`, `resolver.py`, `transport.py` | Servers, groups, profiles, A2S status and endpoint/name resolution |
 | Watch/history | `watch_mode.py`, `monitoring.py`, `history.py` | Query-first slot detection, smart selection, bounded background monitoring, local observations |
 | Appearance and packs | `theme_manager.py`, `translation_packs.py`, `translation_updates.py` | Sanitized themes, import/backup/activation, user-requested pack updates |
-| Optional integrations | `tray.py`, `audio_control.py`, `discord_presence.py`, `destinations.py`, `instance_forward.py` | Tray controls, temporary mute, opt-in presence and previewed destination sharing |
+| Optional integrations | `tray.py`, `audio_control.py`, `discord_presence.py`, `destinations.py`, `instance_forward.py` | Tray controls, temporary mute, opt-in presence, local Discord Join dispatches, and previewed destination sharing |
 | Owned-server companion | `companion-plugin/`, `companion_client.py`, `companion_server.py`, `secret_store.py` | Separately installed LabAPI status source with HTTPS and protected-token boundaries |
 | Distribution | `build_exe.ps1`, `build_release.ps1`, `installer.iss`, `updater*.py` | PyInstaller onedir app, updater, portable ZIP, installer and checksums |
 
@@ -118,8 +118,10 @@ bundles, or bug reports. The public procedure is in
   expressions, and event-handler selectors before applying it.
 - Translation updates are user-initiated, validated, backed up, and confirmed
   before replacement or activation.
-- Discord details require global permission and per-server permission. Raw
-  endpoints are never visible Rich Presence text.
+- Discord server names and Join requests require per-server permission; player
+  counts additionally require the global player-count permission. Raw endpoints
+  are never visible Rich Presence text and Discord Join always opens an import
+  preview before anything is saved or joined.
 - Windows reduced-motion overrides the selected motion preset.
 
 ## Verification matrix

@@ -55,7 +55,10 @@ class WebApi:
         # Restore only the local preference. Discord IPC remains lazy and is
         # still harmless when Discord is not installed or running.
         discord_config = self._load_config()
-        self.discord = DiscordPresence(client_id=discord_config.get("discord_application_id") or None)
+        self.discord = DiscordPresence(
+            client_id=discord_config.get("discord_application_id") or None,
+            on_join=self._handle_discord_join,
+        )
         self.discord.set_enabled(bool(discord_config.get("discord_enabled", False)))
         self._sink = None
         self._join_thread = None
@@ -123,6 +126,30 @@ class WebApi:
     def emit(self, event, data=None):
         if self._sink:
             self._sink({"event": event, "data": data or {}})
+
+    def _handle_discord_join(self, secret):
+        """Turn a Discord Join request into a normal, review-first import.
+
+        A join secret is never trusted as a command to save or join a server.
+        It must be one of our small destination links and the frontend still
+        requires the user to preview and explicitly import it.
+        """
+        try:
+            decode_link(secret)
+        except (TypeError, ValueError):
+            self.emit("toast_requested", {"message": "Ignored an invalid Discord destination request."})
+            return False
+        self.emit("destination_import_requested", {"raw": str(secret), "source": "discord"})
+        return True
+
+    @staticmethod
+    def _discord_join_secret(server):
+        """Create an opaque, single-server destination link for Discord IPC."""
+        try:
+            raw = export_bundle(str(server["name"]), [server])
+            return encode_link(raw)
+        except (KeyError, TypeError, ValueError):
+            return None
 
     def _state(self):
         storage = self._storage_state()
@@ -261,7 +288,7 @@ class WebApi:
         if active and active.get("health") == "stale":
             self.emit("status_changed", {"message": "Calibration profile is stale for the current game/display; recalibration is recommended."})
         if target_type == "server":
-            self.update_discord_presence("connecting", str(target))
+            self.update_discord_presence("connecting", str(target), started_at=time.time())
         runner = joiner.run_group if target_type == "group" else joiner.run
         runner_target = target
         if target_type == "server":
@@ -276,9 +303,9 @@ class WebApi:
         if self._watch_thread and self._watch_thread.is_alive():
             return {"ok": False, "error": "watch mode is already running"}
         self._watch_stop.clear(); self._watch_pause.clear()
-        self._watch_state = {"state": "querying", "server_id": str(target) if target_type == "server" else None, "attempt": 0, "last_status": None, "target_type": target_type}
+        self._watch_state = {"state": "querying", "server_id": str(target) if target_type == "server" else None, "attempt": 0, "last_status": None, "target_type": target_type, "started_at": time.time()}
         if target_type == "server":
-            self.update_discord_presence("watching", str(target))
+            self.update_discord_presence("watching", str(target), started_at=self._watch_state["started_at"])
         self._watch_thread = threading.Thread(target=self._watch_worker, args=(str(target), target_type), daemon=True)
         self._watch_thread.start()
         self.emit("watch_status_changed", dict(self._watch_state))
@@ -319,6 +346,12 @@ class WebApi:
                         status = raw_status or {"available": False}
                         self._watch_state["last_status"] = status; self.history.record(server["id"], status.get("available", False), status.get("players"), status.get("max_players"), status.get("latency_ms"))
                         self.emit("server_sampled", {"server_id": server["id"], "status": status})
+                        if target_type == "server":
+                            self.update_discord_presence(
+                                "slot_candidate" if status.get("available") else "watching",
+                                server["id"], status.get("players"), status.get("max_players"),
+                                self._watch_state.get("started_at"),
+                            )
                         statuses.append({**status, "id": server["id"], "server": server})
                 if target_type == "group":
                     chosen = select_candidate(statuses, group_policy)
@@ -357,10 +390,16 @@ class WebApi:
             self.emit("watch_status_changed", dict(self._watch_state))
 
     def pause_watch(self):
-        self._watch_pause.set(); return {"ok": True}
+        self._watch_pause.set()
+        if self._watch_state.get("server_id"):
+            self.update_discord_presence("paused", self._watch_state["server_id"], started_at=self._watch_state.get("started_at"))
+        return {"ok": True}
 
     def resume_watch(self):
-        self._watch_pause.clear(); return {"ok": True}
+        self._watch_pause.clear()
+        if self._watch_state.get("server_id"):
+            self.update_discord_presence("watching", self._watch_state["server_id"], started_at=self._watch_state.get("started_at"))
+        return {"ok": True}
 
     def stop_watch(self):
         self._watch_stop.set(); self._watch_pause.clear(); self.set_game_audio_muted(False); self.clear_discord_presence(); return {"ok": True}
@@ -485,21 +524,32 @@ class WebApi:
         self._save_config(cfg)
         enabled = bool(cfg.get("discord_enabled", False))
         self.discord.clear()
-        self.discord = DiscordPresence(client_id=value or None)
+        self.discord = DiscordPresence(client_id=value or None, on_join=self._handle_discord_join)
         self.discord.set_enabled(enabled)
         return {"ok": True, "configured": bool(value), "enabled": enabled}
 
     def clear_discord_presence(self):
         return self.discord.clear()
 
-    def update_discord_presence(self, status, server_id=None, players=None):
+    def update_discord_presence(self, status, server_id=None, players=None, max_players=None,
+                                started_at=None):
         """Update presence without ever exposing an endpoint."""
         cfg = self._load_config()
         if bool(cfg.get("discord_enabled")) != self.discord.enabled:
             self.discord.set_enabled(bool(cfg.get("discord_enabled")))
         server = next((item for item in self._load_store()["servers"] if item["id"] == str(server_id)), None)
-        share = bool(cfg.get("discord_share_players")) and bool(server and server.get("share_presence"))
-        return self.discord.update(status, server_name=server.get("name") if server else None, players=players, share=share)
+        share_server = bool(server and server.get("share_presence"))
+        share_players = bool(cfg.get("discord_share_players")) and share_server
+        return self.discord.update(
+            status,
+            server_name=server.get("name") if share_server else None,
+            players=players if share_players else None,
+            max_players=max_players if share_players else None,
+            started_at=started_at,
+            share=share_players,
+            share_server=share_server,
+            join_secret=self._discord_join_secret(server) if share_server else None,
+        )
 
     def get_companion_status(self, url, token):
         try:
@@ -620,7 +670,11 @@ class WebApi:
             if result == "success" and self._watch_state.get("state") == "joining":
                 self._watch_state["state"] = "joined"
                 self.emit("watch_status_changed", dict(self._watch_state))
-            self.update_discord_presence("joined" if result == "success" else "idle", target if result == "success" and isinstance(target, str) else None)
+            self.update_discord_presence(
+                "joined" if result == "success" else "idle",
+                target if result == "success" and isinstance(target, str) else None,
+                started_at=time.time() if result == "success" else None,
+            )
             self.emit("join_succeeded" if result == "success" else "join_failed", {"result": result})
         except Exception as exc:
             self._last_join_result = "error"
