@@ -300,6 +300,90 @@ def test_discord_ipc_frames_activity_without_affecting_disabled_presence():
     assert presence.update("watching")["enabled"] is True
 
 
+def test_discord_ipc_stalled_pipe_never_blocks_an_activity_update():
+    """A missing or stalled Discord pipe must not freeze the desktop app."""
+    from discord_presence import DiscordIPC
+
+    release_open = threading.Event()
+
+    def stalled_open(*_args, **_kwargs):
+        release_open.wait()
+        raise OSError("pipe unavailable")
+
+    ipc = DiscordIPC(client_id="123456789012345678", opener=stalled_open)
+    result = []
+    worker = threading.Thread(target=lambda: result.append(ipc.set_activity({})), daemon=True)
+    try:
+        worker.start()
+        worker.join(0.15)
+        assert not worker.is_alive()
+        assert result == [False]
+    finally:
+        release_open.set()
+        worker.join(1)
+        ipc.close()
+
+
+def test_discord_ipc_stalled_write_never_blocks_a_later_activity_update():
+    """A connected-but-unresponsive Discord pipe must remain a background concern."""
+    from discord_presence import DiscordIPC
+
+    release_write = threading.Event()
+    writing = threading.Event()
+
+    class StalledPipe:
+        writes = 0
+
+        def write(self, _data):
+            self.writes += 1
+            if self.writes > 1:
+                writing.set()
+                release_write.wait()
+
+        def read(self, _size):
+            release_write.wait()
+            return b""
+
+        def close(self):
+            return None
+
+    ipc = DiscordIPC(client_id="123456789012345678", opener=lambda *_args, **_kwargs: StalledPipe())
+    ipc.set_activity({"state": "watching"})
+    assert writing.wait(1)
+    result = []
+    worker = threading.Thread(target=lambda: result.append(ipc.set_activity({"state": "joined"})), daemon=True)
+    try:
+        worker.start()
+        worker.join(0.15)
+        assert not worker.is_alive()
+    finally:
+        release_write.set()
+        worker.join(1)
+        ipc.close()
+
+
+def test_discord_ipc_stalled_close_never_blocks_the_caller():
+    """Disabling presence must remain instant even if Windows stalls pipe close."""
+    from discord_presence import DiscordIPC
+
+    release_close = threading.Event()
+
+    class StalledClosePipe:
+        def close(self):
+            release_close.wait()
+
+    ipc = DiscordIPC(client_id="123456789012345678")
+    ipc.connection = StalledClosePipe()
+    worker = threading.Thread(target=ipc.close, daemon=True)
+    try:
+        worker.start()
+        worker.join(0.15)
+        assert not worker.is_alive()
+    finally:
+        release_close.set()
+        worker.join(1)
+
+
 def test_discord_presence_reports_when_discord_ipc_is_unavailable():
     """The UI must not claim presence is live when Discord rejects IPC."""
     from discord_presence import DiscordPresence
