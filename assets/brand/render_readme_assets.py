@@ -47,7 +47,7 @@ def product_hero():
     mark = Image.open(ROOT / "assets" / "app-icon.png").convert("RGBA")
     mark = mark.resize((272, 272), Image.Resampling.LANCZOS)
     image.paste(mark, (308, 124), mark)
-    image.save(OUT / "readme-hero.png")
+    image.save(OUT / "readme-hero-s.png")
 
 
 def rendered_frame(frame: int, total: int) -> Image.Image:
