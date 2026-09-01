@@ -60,6 +60,7 @@ class NativeTray:
         return win32gui.DefWindowProc(hwnd, message, wparam, lparam)
 
     def _show_menu(self):
+        self._refresh_tip()
         menu = win32gui.CreatePopupMenu()
         for command, label in ((self.CMD_SHOW, "Show"), (self.CMD_PAUSE, "Pause watch"), (self.CMD_RESUME, "Resume watch"), (self.CMD_STOP, "Stop watch")):
             win32gui.AppendMenu(menu, win32con.MF_STRING, command, label)
@@ -71,6 +72,24 @@ class NativeTray:
         x, y = win32gui.GetCursorPos()
         win32gui.TrackPopupMenu(menu, win32con.TPM_LEFTALIGN, x, y, 0, self.hwnd, None)
         win32gui.PostMessage(self.hwnd, win32con.WM_NULL, 0, 0); win32gui.DestroyMenu(menu)
+
+    def _refresh_tip(self):
+        """Refresh the tooltip lazily on interaction; never block the tray loop."""
+        try:
+            watch = self.api.get_watch_status().get("watch", {})
+            state = str(watch.get("state") or "idle").upper()
+            target = str(watch.get("server_name") or "")
+            status = watch.get("last_status") or {}
+            detail = f" · {target}" if target else ""
+            if status.get("players") is not None and status.get("max_players"):
+                detail = f" · {status['players']}/{status['max_players']}"
+                if status.get("latency_ms") is not None:
+                    detail += f" · {round(status['latency_ms'])} ms"
+            text = (f"SCP:SL Auto-Joiner · {state}{detail}")[:127]
+            icon = self._icon or win32gui.LoadIcon(0, win32con.IDI_APPLICATION)
+            win32gui.Shell_NotifyIcon(win32gui.NIM_MODIFY, (self.hwnd, 0, win32gui.NIF_TIP | win32gui.NIF_ICON, self.WM_TRAY, icon, text))
+        except Exception:
+            pass
 
     def _command(self, command):
         if command == self.CMD_SHOW: self.window.show()

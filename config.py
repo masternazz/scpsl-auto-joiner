@@ -8,7 +8,7 @@ import tempfile
 from app_paths import app_dir
 
 CONFIG_PATH = os.path.join(app_dir(), "config.json")
-CONFIG_VERSION = 5
+CONFIG_VERSION = 6
 
 DEFAULTS = {
     "config_version": CONFIG_VERSION,
@@ -18,6 +18,12 @@ DEFAULTS = {
     "browser_refresh_timeout_s": 2,
     "onboarding_complete": False,
     "notifications_enabled": True,
+    "notification_sound": False,
+    "quiet_notifications": False,
+    "slot_alert_actions": False,
+    "compact_mode": False,
+    "high_contrast": False,
+    "large_text": False,
     "mute_game_audio": False,
     # Qt 6 reports cursor positions in DPI-scaled logical pixels. Version 2
     # calibration records native Win32 physical pixels so the coordinates

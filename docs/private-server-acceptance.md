@@ -38,3 +38,12 @@ private data before sharing the report.
 If the game port is not reachable, the acceptance test cannot begin; check the
 Pelican console, Wings status, firewall, port mapping, and server status rather
 than changing the client retry logic.
+
+## Candidate status recording
+
+Record only non-sensitive outcomes in repository documentation. For the current
+v0.3.35 candidate, the authorized server start and query-only A2S check have
+completed successfully. Do not mark this acceptance test complete until all of
+the required available-slot, controlled-full/retry, Watch Mode, and companion
+deployment checks above have been run. Keep server identities, endpoints,
+Steam IDs, tokens, panel details, and raw logs outside the repository.

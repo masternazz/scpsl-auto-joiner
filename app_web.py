@@ -4,6 +4,7 @@ import os
 import sys
 import traceback
 import ctypes
+from urllib.parse import parse_qs, urlparse
 
 from app_paths import app_dir, resource_path
 from web_api import WebApi
@@ -14,11 +15,19 @@ _INSTANCE_MUTEX = None
 
 
 def send_destination_to_existing_instance(link):
-    """Forward a registered destination URI to the already-running instance."""
+    """Forward supported registered URI actions to the already-running instance."""
     value = str(link or "").strip()
     if not value.lower().startswith("scpsl-autojoin://"):
         return False
-    forward_send({"command": "import_destination", "data": value})
+    parsed = urlparse(value)
+    if parsed.netloc == "watch-action":
+        query = parse_qs(parsed.query)
+        action, server_id = (query.get("action") or [""])[0], (query.get("server_id") or [""])[0]
+        if action not in {"join", "keep", "mute_join"} or not server_id:
+            return False
+        forward_send({"command": "watch_action", "action": action, "server_id": server_id})
+    else:
+        forward_send({"command": "import_destination", "data": value})
     return True
 
 
@@ -63,7 +72,10 @@ class Bridge:
         "get_join_status", "get_servers", "get_settings", "get_update_status",
         "get_server_history", "get_server_insights", "get_watch_status", "get_monitor_status",
         "get_calibration_profiles", "get_discord_status",
-        "get_companion_status",
+        "get_companion_status", "get_companion_dashboard",
+        "get_join_explanations", "get_recovery_actions", "get_server_heatmap", "get_collections",
+        "calibration_target_map", "run_setup_check", "create_support_bundle", "recover_connection",
+        "create_backup", "preview_backup", "restore_backup", "save_collection", "register_destination_protocol",
         "check_translation_updates", "update_translation_pack",
         "import_translation_pack", "install_translation_link", "install_update",
         "open_data_folder", "open_translation_folder", "refresh_server_status",
@@ -117,6 +129,21 @@ class Bridge:
         except (AttributeError, OSError, TypeError) as exc:
             startup_trace(f"translation picker failed: {exc}")
             return {"ok": False, "error": f"Could not open the native picker: {exc}"}
+
+    def pick_backup_source(self):
+        """Pick a local backup without exposing arbitrary filesystem paths to JS."""
+        if not self._window:
+            return {"ok": False, "error": "The native file picker is unavailable."}
+        try:
+            import webview
+            paths = self._window.create_file_dialog(
+                webview.FileDialog.OPEN, allow_multiple=False,
+                file_types=("SCP:SL Auto-Joiner backups (*.zip)",),
+            )
+            return {"ok": bool(paths), "path": paths[0] if paths else None}
+        except (AttributeError, OSError, TypeError) as exc:
+            startup_trace(f"backup picker failed: {exc}")
+            return {"ok": False, "error": f"Could not open the backup picker: {exc}"}
 
 
 def _show_startup_error(message):
@@ -186,9 +213,12 @@ def main():
     window = webview.create_window("SCP:SL // CONTAINMENT", page, js_api=bridge,
                                    width=1280, height=820, min_size=(960, 640), background_color="#0b090f")
     bridge._attach_window(window)
-    forwarder = ForwardingServer(
-        lambda payload: bridge._api.emit("destination_import_requested", {"raw": payload["data"]})
-    )
+    def handle_forwarded(payload):
+        if payload.get("command") == "watch_action":
+            bridge._api.handle_watch_alert_action(payload["action"], payload["server_id"])
+        else:
+            bridge._api.emit("destination_import_requested", {"raw": payload["data"]})
+    forwarder = ForwardingServer(handle_forwarded)
     try:
         forwarder.start()
     except (OSError, RuntimeError) as exc:

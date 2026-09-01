@@ -7,10 +7,12 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import threading
 import time
 import webbrowser
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 
 import config
@@ -30,8 +32,8 @@ from theme_manager import ThemeManager
 from translation_packs import PackError, PackManager
 from monitoring import BackgroundMonitor
 import secret_store
-
-APP_VERSION = os.environ.get("SCP_SL_APP_VERSION", "0.3.34")
+import notify
+from version import APP_VERSION
 
 
 def _translation_dir():
@@ -68,10 +70,57 @@ class WebApi:
         self._watch_thread = None
         self._watch_stop = threading.Event()
         self._watch_pause = threading.Event()
+        self._watch_alert = threading.Event()
+        self._pending_watch_alert = None
         self._monitor = None
         self._manual_audio_controller = None
         self._last_join_result = None
         self._watch_state = {"state": "idle", "server_id": None, "attempt": 0, "last_status": None}
+        self._decisions = []
+
+    _DECISION_TEXT = {
+        "full": ("Server full", "Keep watching or retry after capacity changes."),
+        "single_slot": ("One slot detected", "Waiting for the required second query sample."),
+        "query_failure": ("Server query failed", "Keep watching, refresh manually, or use Immediate Auto-Join."),
+        "filter_mismatch": ("Group filter excluded this server", "Adjust the group population or fill limits."),
+        "gui_recovery": ("Game UI needs recovery", "Bring SCP:SL to its menu, then choose Retry safely."),
+        "timeout": ("Connection timed out", "Check SCP:SL and use Diagnostics before retrying."),
+        "stale_calibration": ("Calibration may be stale", "Select or recalibrate the matching display profile."),
+        "user_stop": ("Stopped by you", "No further input or queries will be sent."),
+        "slot_confirmed": ("Slot confirmed", "Starting the selected connection flow."),
+        "joined": ("Joined", "The connection was confirmed by SCP:SL."),
+    }
+
+    def _record_decision(self, code, evidence=None):
+        title, next_action = self._DECISION_TEXT.get(str(code), ("Connection state changed", "Review Live Activity and Diagnostics."))
+        item = {"code": str(code), "title": title, "next_action": next_action,
+                "evidence": dict(evidence or {}), "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        self._decisions = (self._decisions + [item])[-100:]
+        self.emit("join_decision", item)
+        return item
+
+    def get_join_explanations(self):
+        return {"ok": True, "items": list(reversed(self._decisions))}
+
+    def get_recovery_actions(self):
+        latest = self._decisions[-1] if self._decisions else None
+        code = latest.get("code") if latest else ""
+        actions = [{"id": "diagnostics", "label": "Open Diagnostics", "safe": True}]
+        if code in {"full", "query_failure", "single_slot"}:
+            actions.insert(0, {"id": "watch", "label": "Keep watching", "safe": True})
+        if code in {"gui_recovery", "timeout", "stale_calibration"}:
+            actions.append({"id": "retry", "label": "Retry safely", "safe": False})
+        return {"ok": True, "decision": latest, "actions": actions}
+
+    def recover_connection(self, target, target_type="server", action="diagnostics"):
+        if action == "diagnostics":
+            return {"ok": True, "next": "diagnostics"}
+        if action == "watch":
+            return self.start_watch(target, target_type)
+        if action == "retry":
+            # Explicit UI request only; recovery never injects input by itself.
+            return self.start_join(target, target_type, "immediate")
+        return {"ok": False, "error": "unsupported recovery action"}
 
     def _migrate_legacy_calibration(self):
         """Preserve pre-profile calibration as an explicit named profile."""
@@ -160,7 +209,7 @@ class WebApi:
             "settings": cfg, "calibration": self.get_calibration_state()["calibration"],
             "calibration_profiles": self.get_calibration_profiles(),
             "theme": self.theme_manager.load(), "packs": self.pack_manager.load(),
-            "join": self.get_join_status()["join"],
+            "join": self.get_join_status()["join"], "decisions": self.get_join_explanations()["items"],
             "storage": storage,
         }
 
@@ -174,13 +223,49 @@ class WebApi:
         store = self._load_store()
         for server in store["servers"]:
             if server["id"] == str(server_id):
-                server.update({"monitoring": dict(profile.get("monitoring") or server.get("monitoring") or {}), "join_profile": dict(profile.get("join_profile") or server.get("join_profile") or {}), "share_presence": bool(profile.get("share_presence", server.get("share_presence", False))), "companion_url": profile.get("companion_url", server.get("companion_url"))})
+                server.update({"monitoring": dict(profile.get("monitoring") or server.get("monitoring") or {}), "join_profile": dict(profile.get("join_profile") or server.get("join_profile") or {}), "share_presence": bool(profile.get("share_presence", server.get("share_presence", False))), "companion_url": profile.get("companion_url", server.get("companion_url")), "tags": sorted({str(tag).strip() for tag in profile.get("tags", server.get("tags", [])) if str(tag).strip()}, key=str.casefold), "notes": str(profile.get("notes", server.get("notes", "")) or "").strip()[:4000], "collections": sorted({str(item).strip() for item in profile.get("collections", server.get("collections", [])) if str(item).strip()}, key=str.casefold), "notification_profile": dict(profile.get("notification_profile") or server.get("notification_profile") or {})})
                 if "companion_token" in profile:
                     token = str(profile.get("companion_token") or "")
                     server["companion_token"] = secret_store.protect(token) if token else None
+                store["collections"] = sorted(
+                    {str(name).strip() for name in store.get("collections", []) + server["collections"] if str(name).strip()},
+                    key=str.casefold,
+                )
                 server_store.save_store(store, self.store_path)
                 return {"ok": True, "server": server}
         return {"ok": False, "error": "saved server was not found"}
+
+    def save_collection(self, name):
+        name = str(name or "").strip()
+        if not name or len(name) > 80:
+            return {"ok": False, "error": "collection name must be 1 to 80 characters"}
+        store = self._load_store()
+        store["collections"] = sorted(set(store.get("collections", [])) | {name}, key=str.casefold)
+        server_store.save_store(store, self.store_path)
+        return {"ok": True, "collections": store["collections"]}
+
+    def get_collections(self):
+        return {"ok": True, "collections": self._load_store().get("collections", [])}
+
+    def register_destination_protocol(self):
+        """Register the per-user URI handler for a portable Windows build.
+
+        Installed copies are registered by Inno Setup.  This explicit action
+        lets a portable user opt in without writing machine-wide registry keys.
+        """
+        if os.name != "nt" or not getattr(sys, "frozen", False):
+            return {"ok": False, "error": "Protocol registration is available from the packaged Windows app."}
+        try:
+            import winreg
+            command = f'"{sys.executable}" "%1"'
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\scpsl-autojoin") as key:
+                winreg.SetValueEx(key, None, 0, winreg.REG_SZ, "URL:SCP:SL Auto-Joiner Destination")
+                winreg.SetValueEx(key, "URL Protocol", 0, winreg.REG_SZ, "")
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\scpsl-autojoin\shell\open\command") as key:
+                winreg.SetValueEx(key, None, 0, winreg.REG_SZ, command)
+            return {"ok": True}
+        except OSError as exc:
+            return {"ok": False, "error": f"Could not register destination links: {exc}"}
 
     def save_server(self, name, ip, port):
         try:
@@ -286,6 +371,7 @@ class WebApi:
         profile_data = self.get_calibration_profiles()
         active = next((p for p in profile_data.get("profiles", []) if p.get("id") == profile_data.get("active")), None)
         if active and active.get("health") == "stale":
+            self._record_decision("stale_calibration", {"profile_id": active.get("id")})
             self.emit("status_changed", {"message": "Calibration profile is stale for the current game/display; recalibration is recommended."})
         if target_type == "server":
             self.update_discord_presence("connecting", str(target), started_at=time.time())
@@ -302,8 +388,10 @@ class WebApi:
     def start_watch(self, target, target_type="server"):
         if self._watch_thread and self._watch_thread.is_alive():
             return {"ok": False, "error": "watch mode is already running"}
-        self._watch_stop.clear(); self._watch_pause.clear()
-        self._watch_state = {"state": "querying", "server_id": str(target) if target_type == "server" else None, "attempt": 0, "last_status": None, "target_type": target_type, "started_at": time.time()}
+        self._watch_stop.clear(); self._watch_pause.clear(); self._watch_alert.clear(); self._pending_watch_alert = None
+        store = self._load_store()
+        selected = next((item for item in store["servers"] if item["id"] == str(target)), None) if target_type == "server" else next((item for item in store["groups"] if item["id"] == str(target)), None)
+        self._watch_state = {"state": "querying", "server_id": str(target) if target_type == "server" else None, "server_name": selected.get("name") if selected else None, "attempt": 0, "last_status": None, "target_type": target_type, "started_at": time.time()}
         if target_type == "server":
             self.update_discord_presence("watching", str(target), started_at=self._watch_state["started_at"])
         self._watch_thread = threading.Thread(target=self._watch_worker, args=(str(target), target_type), daemon=True)
@@ -340,6 +428,7 @@ class WebApi:
                         except Exception:
                             raw_status = None
                         if query_failures[server["id"]].observe(raw_status) and not self._watch_state.get("fallback_available"):
+                            self._record_decision("query_failure", {"server_id": server["id"], "failures": 3})
                             self._watch_state["fallback_available"] = True
                             self.emit("watch_fallback_available", {"server_id": server["id"], "message": "Server queries are failing. Normal Auto-Join is available as a fallback."})
                             self.emit("toast_requested", {"message": "Watch Mode is still monitoring; normal Auto-Join is available if needed."})
@@ -356,6 +445,7 @@ class WebApi:
                 if target_type == "group":
                     chosen = select_candidate(statuses, group_policy)
                     if chosen and not confirmations[chosen["id"]].accepts(chosen):
+                        self._record_decision("single_slot", {"server_id": chosen["id"]})
                         chosen = None
                 else:
                     # A polling cycle contributes at most one confirmation
@@ -364,6 +454,36 @@ class WebApi:
                 if chosen:
                     server = chosen["server"]
                     if server:
+                        self._record_decision("slot_confirmed", {"server_id": server["id"]})
+                        profile = server.get("notification_profile") or {}
+                        cfg = self._load_config()
+                        enabled = profile.get("enabled")
+                        action_alert = bool(profile.get("actionable") or cfg.get("slot_alert_actions")) and enabled is not False and bool(cfg.get("notifications_enabled", True))
+                        alert_sent = False
+                        if enabled is not False and cfg.get("notifications_enabled", True):
+                            alert_sent = notify.slot_available(server["name"], server["id"], chosen.get("players"), chosen.get("max_players"), bool((profile.get("sound") or cfg.get("notification_sound")) and not (profile.get("quiet") or cfg.get("quiet_notifications"))), action_alert)
+                        if action_alert and alert_sent:
+                            # An actionable notification is opt-in. Until the
+                            # user chooses, Watch Mode only keeps checking and
+                            # never sends game input on its own.
+                            self._pending_watch_alert = {"server_id": server["id"], "action": None}
+                            self._watch_alert.clear()
+                            self._watch_state["state"] = "slot_candidate"
+                            self.emit("watch_status_changed", dict(self._watch_state))
+                            while not self._watch_stop.is_set() and not self._watch_alert.wait(.25):
+                                pass
+                            action = (self._pending_watch_alert or {}).get("action")
+                            self._pending_watch_alert = None
+                            if self._watch_stop.is_set():
+                                return
+                            if action == "keep":
+                                self._watch_state["state"] = "querying"
+                                self.emit("watch_status_changed", dict(self._watch_state))
+                                continue
+                            if action == "mute_join":
+                                self.set_game_audio_muted(True)
+                            if action != "join" and action != "mute_join":
+                                continue
                         self._watch_state["state"] = "joining"; self.emit("watch_status_changed", dict(self._watch_state))
                         self._last_join_result = None
                         self.start_join(server["id"], "server", "immediate")
@@ -402,7 +522,20 @@ class WebApi:
         return {"ok": True}
 
     def stop_watch(self):
-        self._watch_stop.set(); self._watch_pause.clear(); self.set_game_audio_muted(False); self.clear_discord_presence(); return {"ok": True}
+        self._watch_stop.set(); self._watch_pause.clear(); self._watch_alert.set(); self._pending_watch_alert = None; self._record_decision("user_stop"); self.set_game_audio_muted(False); self.clear_discord_presence(); return {"ok": True}
+
+    def handle_watch_alert_action(self, action, server_id):
+        """Accept only a same-user toast action for the currently confirmed slot."""
+        if action not in {"join", "keep", "mute_join"}:
+            return {"ok": False, "error": "unsupported slot-alert action"}
+        pending = self._pending_watch_alert or {}
+        if str(pending.get("server_id")) != str(server_id):
+            return {"ok": False, "error": "that slot alert is no longer active"}
+        pending["action"] = action
+        self._pending_watch_alert = pending
+        self._watch_alert.set()
+        self.emit("toast_requested", {"message": "Slot alert action received."})
+        return {"ok": True}
 
     def set_game_audio_muted(self, muted):
         """Toggle a tray/manual mute and always restore the prior session state."""
@@ -423,6 +556,128 @@ class WebApi:
 
     def get_server_insights(self, server_id):
         return {"ok": True, "insights": self.history.insights(str(server_id))}
+
+    def get_server_heatmap(self, server_id):
+        return {"ok": True, "heatmap": self.history.heatmap(str(server_id))}
+
+    def calibration_target_map(self):
+        calibration = self.get_calibration_state()["calibration"]
+        points = calibration.get("points") or {}
+        rect = calibration.get("metadata", {}).get("live_client_rect")
+        targets = []
+        for name in config.REQUIRED_CLICK_POINTS:
+            point = points.get(name, [0, 0])
+            relative = None
+            if rect and point and len(point) == 2 and rect[2] > rect[0] and rect[3] > rect[1]:
+                relative = [round((point[0] - rect[0]) / (rect[2] - rect[0]), 4), round((point[1] - rect[1]) / (rect[3] - rect[1]), 4)]
+            targets.append({"id": name, "point": point, "relative": relative, "captured": tuple(point) != (0, 0)})
+        return {"ok": True, "targets": targets, "client_rect": rect, "metadata": calibration.get("metadata", {})}
+
+    def run_setup_check(self, server_id=None):
+        game = joiner.find_game_executable()
+        try:
+            watcher = logwatch.LogWatcher(); log_ready = bool(getattr(watcher, "path", None)); watcher.close()
+        except Exception:
+            log_ready = False
+        try:
+            audio_ready = bool(audio_control.GameAudioMute().available)
+        except Exception:
+            audio_ready = False
+        profile_data = self.get_calibration_profiles()
+        active = next((item for item in profile_data.get("profiles", []) if item.get("id") == profile_data.get("active")), None)
+        health = active.get("health") if active else "automatic"
+        discord_state = self.get_discord_status()
+        query_check = {"id": "query", "label": "A2S server query", "ok": None, "detail": "Choose a saved server to run a voluntary query check."}
+        if server_id:
+            server = next((item for item in self._load_store()["servers"] if item["id"] == str(server_id)), None)
+            if not server:
+                query_check = {"id": "query", "label": "A2S server query", "ok": False, "detail": "The selected saved server no longer exists."}
+            else:
+                status = resolver.query_server(server["ip"], server["port"], path=self.store_path)
+                query_check = {"id": "query", "label": "A2S server query", "ok": bool(status), "detail": "Selected server responded to an A2S query." if status else "No A2S response from the selected server; Watch Mode can keep trying."}
+        checks = [
+            {"id": "game", "label": "SCP:SL installation", "ok": bool(game), "detail": "Game executable detected." if game else "SCP:SL executable was not found."},
+            {"id": "log", "label": "Player.log", "ok": log_ready, "detail": "Local connection log is readable." if log_ready else "Player.log is not available yet."},
+            {"id": "audio", "label": "Game audio control", "ok": audio_ready, "detail": "Game audio can be muted during a run." if audio_ready else "Audio control is unavailable; joining still works."},
+            {"id": "calibration", "label": "Calibration", "ok": health != "stale", "detail": f"Profile health: {health}."},
+            {"id": "notifications", "label": "Notifications", "ok": bool(self._load_config().get("notifications_enabled", True)), "detail": "Notifications are enabled." if self._load_config().get("notifications_enabled", True) else "Notifications are disabled in Settings."},
+            {"id": "discord", "label": "Discord", "ok": not self._load_config().get("discord_enabled") or bool(discord_state.get("connected")), "detail": "Optional Discord integration is ready." if discord_state.get("connected") else "Discord is optional and can remain unavailable."},
+            query_check,
+        ]
+        self.emit("setup_check_completed", {"checks": checks})
+        return {"ok": True, "checks": checks}
+
+    @staticmethod
+    def _safe_config_for_export(cfg):
+        clean = dict(cfg or {})
+        for key in ("discord_application_id", "discord_enabled", "discord_share_players"):
+            clean.pop(key, None)
+        return clean
+
+    @staticmethod
+    def _safe_store_for_export(store):
+        clean = json.loads(json.dumps(store))
+        for server in clean.get("servers", []):
+            server.pop("companion_token", None)
+        return clean
+
+    def _backup_payload(self):
+        return {"schema": "scpsl-autojoin.backup", "version": 1, "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "config": self._safe_config_for_export(self._load_config()), "servers": self._safe_store_for_export(self._load_store()),
+                "theme": self.theme_manager.load(), "packs": self.pack_manager.load(), "calibrations": self.calibration_profiles.load(),
+                "history_summary": {server["id"]: self.history.insights(server["id"]) for server in self._load_store()["servers"]}}
+
+    def create_backup(self):
+        stamp = time.strftime('%Y%m%d-%H%M%S')
+        # A restore creates its own safety backup immediately after a manual
+        # backup can be made, so second-resolution names are not sufficient.
+        path = os.path.join(self.data_dir, f"scpsl-autojoin-backup-{stamp}-{time.time_ns() % 1_000_000_000:09d}.zip")
+        with zipfile.ZipFile(path, "x", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("backup.json", json.dumps(self._backup_payload(), indent=2))
+        return {"ok": True, "path": path}
+
+    def preview_backup(self, path):
+        try:
+            with zipfile.ZipFile(os.fspath(path)) as archive:
+                payload = json.loads(archive.read("backup.json").decode("utf-8"))
+            if payload.get("schema") != "scpsl-autojoin.backup" or payload.get("version") != 1:
+                raise ValueError("unsupported backup")
+            servers = payload.get("servers", {}).get("servers", [])
+            return {"ok": True, "summary": {"servers": len(servers), "groups": len(payload.get("servers", {}).get("groups", [])), "profiles": len(payload.get("calibrations", {}).get("profiles", [])), "created_at": payload.get("created_at")}, "backup": payload}
+        except (OSError, KeyError, TypeError, ValueError, zipfile.BadZipFile, json.JSONDecodeError) as exc:
+            return {"ok": False, "error": f"Could not read backup: {exc}"}
+
+    def restore_backup(self, path):
+        preview = self.preview_backup(path)
+        if not preview.get("ok"):
+            return preview
+        safety = self.create_backup()
+        payload = preview["backup"]
+        current = {
+            "config": self._load_config(), "servers": self._load_store(),
+            "calibrations": self.calibration_profiles.load(), "theme": self.theme_manager.load(),
+            "packs": self.pack_manager.load(),
+        }
+        try:
+            server_store.save_store(payload["servers"], self.store_path)
+            self._save_config({**config.DEFAULTS, **payload.get("config", {})})
+            self.calibration_profiles.save(payload.get("calibrations", {"profiles": [], "active": None}))
+            self.theme_manager.save(payload.get("theme", {"preset": "violet", "custom": None}))
+            # Pack files are never copied from a backup. This restores only
+            # metadata for packs already present in the local game folder.
+            self.pack_manager._save(payload.get("packs", {"version": 1, "packs": [], "active_pack": None}))
+            return {"ok": True, "safety_backup": safety["path"], **self._state()}
+        except (OSError, TypeError, ValueError, KeyError) as exc:
+            try:
+                server_store.save_store(current["servers"], self.store_path)
+                self._save_config(current["config"])
+                self.calibration_profiles.save(current["calibrations"])
+                self.theme_manager.save(current["theme"])
+                self.pack_manager._save(current["packs"])
+                rollback = "The pre-restore state was restored."
+            except (OSError, TypeError, ValueError):
+                rollback = f"Use the safety backup at {safety.get('path', 'the backup location')} to roll back."
+            return {"ok": False, "error": f"Restore failed. {rollback} ({exc})"}
 
     def _monitor_query(self, server):
         return self._query_server(server)
@@ -557,6 +812,20 @@ class WebApi:
             return {"ok": True, "status": CompanionClient(url, token).status()}
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
             return {"ok": False, "error": str(exc)}
+
+    def get_companion_dashboard(self, server_id):
+        server = next((item for item in self._load_store()["servers"] if item["id"] == str(server_id)), None)
+        if not server:
+            return {"ok": False, "error": "saved server was not found"}
+        if not server.get("companion_url"):
+            return {"ok": False, "error": "no owned-server companion is configured for this server"}
+        try:
+            from companion_client import CompanionClient
+            status = CompanionClient(server["companion_url"], self._companion_token(server)).status(timeout=2)
+            return {"ok": True, "server": {"id": server["id"], "name": server["name"]}, "status": status,
+                    "connection": {"healthy": True, "source": "companion", "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}}
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            return {"ok": False, "error": f"Companion unavailable: {exc}", "connection": {"healthy": False, "source": "a2s-fallback"}}
 
     def check_translation_updates(self):
         """Return update candidates without downloading or activating anything."""
@@ -736,11 +1005,7 @@ class WebApi:
         return {"ok": True, "game_detected": bool(hwnd), "client_rect": list(rect) if rect else None, "dpi": winput.get_window_dpi(hwnd) if hwnd else None}
 
     def export_local_data(self):
-        path = os.path.join(self.data_dir, f"scpsl-autojoin-export-{time.strftime('%Y%m%d-%H%M%S')}.json")
-        with open(path, "x", encoding="utf-8") as stream:
-            json.dump({"config": self._load_config(), "servers": self._load_store(),
-                       "theme": self.theme_manager.load(), "packs": self.pack_manager.load()}, stream, indent=2)
-        return {"ok": True, "path": path}
+        return self.create_backup()
 
     def reset_local_storage(self):
         removed = []
@@ -770,7 +1035,7 @@ class WebApi:
             low, high = numeric_limits[key]
             if not low <= value <= high:
                 return {"ok": False, "error": f"{key} must be between {low} and {high}"}
-        elif key in {"group_loop", "onboarding_complete", "notifications_enabled", "mute_game_audio", "auto_update", "discord_enabled", "discord_share_players"}:
+        elif key in {"group_loop", "onboarding_complete", "notifications_enabled", "notification_sound", "quiet_notifications", "slot_alert_actions", "compact_mode", "high_contrast", "large_text", "mute_game_audio", "auto_update", "discord_enabled", "discord_share_players"}:
             if not isinstance(value, bool):
                 return {"ok": False, "error": f"{key} must be true or false"}
         elif key == "navigation_mode" and value not in {"automatic", "manual"}:
@@ -873,7 +1138,30 @@ class WebApi:
     def create_bug_report(self):
         path = os.path.join(self.data_dir, f"bug-report-{int(time.time())}.json")
         with open(path, "w", encoding="utf-8") as stream:
-            json.dump({"created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "state": self._state()}, stream, indent=2)
+            json.dump({"created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "diagnostics": self.run_input_diagnostic(), "decisions": self.get_join_explanations()["items"]}, stream, indent=2)
+        return {"ok": True, "path": path}
+
+    def create_support_bundle(self):
+        path = os.path.join(self.data_dir, f"support-bundle-{time.strftime('%Y%m%d-%H%M%S')}.zip")
+        report = {"created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "version": APP_VERSION,
+                  "diagnostics": self.run_input_diagnostic(), "setup": self.run_setup_check(),
+                  "calibration": self.calibration_target_map(), "decisions": self.get_join_explanations()["items"],
+                  "settings": self._safe_config_for_export(self._load_config())}
+        # Avoid logging personal endpoints, notes, server history, tokens, or Discord values.
+        def scrub_log(text):
+            text = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?\b", "[endpoint removed]", text)
+            text = re.sub(r"\b[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?::\d{1,5})?\b", "[endpoint removed]", text, flags=re.I)
+            text = re.sub(r"(?i)(bearer\s+|token[=:]\s*)[^\s,;]+", r"\1[removed]", text)
+            return text
+        with zipfile.ZipFile(path, "x", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("report.json", json.dumps(report, indent=2))
+            log_dir = os.path.join(self.data_dir, "logs")
+            if os.path.isdir(log_dir):
+                for filename in sorted(os.listdir(log_dir))[-3:]:
+                    source = os.path.join(log_dir, filename)
+                    if os.path.isfile(source) and filename.lower().endswith((".log", ".txt")):
+                        with open(source, "r", encoding="utf-8", errors="replace") as stream:
+                            archive.writestr(os.path.join("logs", os.path.basename(source)), scrub_log(stream.read()))
         return {"ok": True, "path": path}
 
     def get_update_status(self):

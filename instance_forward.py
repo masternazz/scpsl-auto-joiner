@@ -16,17 +16,21 @@ def send(payload, address=None):
 
 def receive(connection):
     payload = json.loads(connection.recv())
-    if not isinstance(payload, dict) or payload.get("command") != "import_destination":
+    if not isinstance(payload, dict) or payload.get("command") not in {"import_destination", "watch_action"}:
         raise ValueError("unsupported forwarded command")
     return payload
 
 
 def dispatch_payload(payload, handler):
     payload = payload if isinstance(payload, dict) else json.loads(payload)
-    if payload.get("command") != "import_destination" or not isinstance(payload.get("data"), str):
+    if payload.get("command") == "import_destination" and isinstance(payload.get("data"), str):
+        handler(payload)
+        return True
+    if payload.get("command") == "watch_action" and payload.get("action") in {"join", "keep", "mute_join"} and isinstance(payload.get("server_id"), str):
+        handler(payload)
+        return True
+    else:
         raise ValueError("unsupported forwarded command")
-    handler(payload)
-    return True
 
 
 class ForwardingServer:

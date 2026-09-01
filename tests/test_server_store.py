@@ -11,14 +11,14 @@ import server_store
 
 def test_missing_store_has_versioned_shape(tmp_path):
     path = str(tmp_path / "servers.json")
-    assert server_store.load_store(path) == {"version": 2, "servers": [], "groups": []}
+    assert server_store.load_store(path) == {"version": 3, "servers": [], "groups": [], "collections": []}
 
 
 def test_malformed_store_is_quarantined_and_recovered(tmp_path):
     path = tmp_path / "servers.json"
     path.write_text('{"version": 1, "servers":', encoding="utf-8")
 
-    assert server_store.load_store(str(path)) == {"version": 2, "servers": [], "groups": []}
+    assert server_store.load_store(str(path)) == {"version": 3, "servers": [], "groups": [], "collections": []}
     assert path.is_file()
     assert list(tmp_path.glob("servers.json.corrupt*"))
 
@@ -34,7 +34,7 @@ def test_legacy_servers_migrate_with_stable_ids(tmp_path):
     assert first["servers"][0]["name"] == "Canada 2"
     assert first["servers"][0]["ip"] == "1.2.3.4"
     assert first["servers"][0]["port"] == 7777
-    assert json.load(open(path, encoding="utf-8"))["version"] == 2
+    assert json.load(open(path, encoding="utf-8"))["version"] == 3
 
 
 def test_server_and_group_crud_preserves_order_and_cleans_membership(tmp_path):

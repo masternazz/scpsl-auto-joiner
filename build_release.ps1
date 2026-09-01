@@ -1,8 +1,13 @@
-param([string]$Version = $(if ($env:SCP_SL_RELEASE_VERSION) { $env:SCP_SL_RELEASE_VERSION } else { "0.3.34" }))
+param([string]$Version = $(if ($env:SCP_SL_RELEASE_VERSION) { $env:SCP_SL_RELEASE_VERSION } else { "0.3.35" }))
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
 $env:SCP_SL_APP_VERSION = $Version
+
+$declaredVersion = (Select-String -LiteralPath (Join-Path $PSScriptRoot "version.py") -Pattern '^APP_VERSION\s*=\s*"([^"]+)"').Matches.Groups[1].Value
+if ($declaredVersion -ne $Version) {
+    throw "version.py declares $declaredVersion but the requested release is $Version. Update version.py before packaging."
+}
 
 $version = $Version
 $distDir = Join-Path $PSScriptRoot "dist\SCP-SL-Auto-Joiner"

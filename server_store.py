@@ -9,7 +9,7 @@ import uuid
 from app_paths import app_dir
 
 STORE_PATH = os.path.join(app_dir(), "servers.json")
-STORE_VERSION = 2
+STORE_VERSION = 3
 _MIGRATION_NAMESPACE = uuid.UUID("f2d40e6e-7f8d-4e5d-a6e6-6a2c4d1de5b5")
 _HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,253}[A-Za-z0-9])?$")
 
@@ -19,7 +19,7 @@ def _path(path):
 
 
 def _empty_store():
-    return {"version": STORE_VERSION, "servers": [], "groups": []}
+    return {"version": STORE_VERSION, "servers": [], "groups": [], "collections": []}
 
 
 def _server_defaults(server):
@@ -37,6 +37,14 @@ def _server_defaults(server):
     normalized.setdefault("share_presence", False)
     normalized.setdefault("companion_url", None)
     normalized.setdefault("companion_token", None)
+    normalized["tags"] = sorted({str(tag).strip() for tag in normalized.get("tags", []) if str(tag).strip()}, key=str.casefold)
+    normalized["notes"] = str(normalized.get("notes") or "").strip()[:4000]
+    normalized["collections"] = sorted({str(item).strip() for item in normalized.get("collections", []) if str(item).strip()}, key=str.casefold)
+    notifications = dict(normalized.get("notification_profile") or {})
+    notifications.setdefault("enabled", None)
+    notifications.setdefault("sound", False)
+    notifications.setdefault("quiet", False)
+    normalized["notification_profile"] = notifications
     return normalized
 
 
@@ -70,11 +78,12 @@ def _validate_endpoint(ip, port):
 
 
 def _migrate(data):
-    if isinstance(data, dict) and data.get("version") in (1, STORE_VERSION):
+    if isinstance(data, dict) and data.get("version") in (1, 2, STORE_VERSION):
         store = {
             "version": STORE_VERSION,
             "servers": list(data.get("servers", [])),
             "groups": list(data.get("groups", [])),
+            "collections": list(data.get("collections", [])),
         }
         for index, server in enumerate(store["servers"]):
             store["servers"][index] = _server_defaults(_validate_server_record(server))
@@ -88,6 +97,7 @@ def _migrate(data):
             policy.setdefault("loop", None)
             normalized["policy"] = policy
             store["groups"][index] = normalized
+        store["collections"] = sorted({str(item).strip() for item in store["collections"] if str(item).strip()}, key=str.casefold)
         store["version"] = STORE_VERSION
         return store
     if not isinstance(data, dict):
@@ -285,4 +295,4 @@ def delete_group(group_id, path=None):
 def search_servers(query, path=None):
     query = str(query or "").casefold()
     return [dict(server) for server in load_store(path)["servers"]
-            if not query or query in " ".join(str(server.get(key, "")) for key in ("name", "ip", "port")).casefold()]
+            if not query or query in " ".join(str(server.get(key, "")) for key in ("name", "ip", "port", "notes", "tags", "collections")).casefold()]

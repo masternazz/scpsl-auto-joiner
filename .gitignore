@@ -27,6 +27,7 @@ graphify-out/
 .release-smoke-*/
 .tmp-v*-*/
 companion-plugin/obj/
+companion-plugin/bin/
 /output/
 /prototypes/
 /assets/brand/remotion/

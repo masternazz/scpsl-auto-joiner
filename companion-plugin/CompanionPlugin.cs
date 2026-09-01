@@ -5,11 +5,10 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Web.Script.Serialization;
-using LabApi.Events.Arguments.PlayerEvents;
-using LabApi.Events.CustomHandlers;
+using LabApi.Events.Arguments.ServerEvents;
+using LabApi.Events.Handlers;
 using LabApi.Features.Console;
 using LabApi.Features.Wrappers;
-using LabApi.Features.Wrappers.Facility;
 using LabApi.Loader.Features.Plugins;
 using LabApi.Features;
 
@@ -58,7 +57,7 @@ public sealed class CompanionPlugin : Plugin
 
     private void OnWaiting() { phase = "waiting"; roundStarted = null; }
     private void OnStarted() { phase = "running"; roundStarted = DateTime.UtcNow; }
-    private void OnEnded() { phase = "ending"; }
+    private void OnEnded(RoundEndedEventArgs _) { phase = "ending"; }
 
     private void HandleContext(IAsyncResult result)
     {
@@ -91,7 +90,7 @@ public sealed class CompanionPlugin : Plugin
 
     private string BuildStatus(string? steamId)
     {
-        var player = !string.IsNullOrWhiteSpace(steamId) && allowedSteamIds.Contains(steamId)
+        var player = steamId is { Length: > 0 } && allowedSteamIds.Contains(steamId)
             ? Player.List.FirstOrDefault(p => p.UserId == steamId) : null;
         var result = new {
             protocol_version = 1,

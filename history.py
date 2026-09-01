@@ -71,3 +71,31 @@ class ServerHistory:
             periods[label] = {"samples": len(subset), "online_samples": sum(1 for row in subset if row["online"]), "peak_players": max((row["players"] or 0 for row in subset if row["online"]), default=0)}
         latencies = [r["latency_ms"] for r in online if r["latency_ms"] is not None]
         return {"samples": len(rows), "online_samples": len(online), "peak_players": max((r["players"] or 0 for r in online), default=0), "average_latency_ms": sum(latencies) / max(1, len(latencies)), "full_frequency": len(full) / max(1, len(online)), "availability_likelihood": len(online) / max(1, len(rows)), "periods": periods}
+
+    def heatmap(self, server_id, limit=5000, minimum_samples=8):
+        """Return local weekday/hour availability evidence without prediction claims.
+
+        Each cell represents observations made in that UTC weekday/hour.  The
+        UI labels sparse data as insufficient rather than inventing a schedule.
+        """
+        rows = self.recent(server_id, limit)
+        buckets = {(day, hour): [] for day in range(7) for hour in range(24)}
+        for row in rows:
+            try:
+                stamp = _dt.datetime.fromisoformat(row["observed_at"])
+                if stamp.tzinfo is None:
+                    stamp = stamp.replace(tzinfo=_dt.timezone.utc)
+                buckets[(stamp.weekday(), stamp.hour)].append(row)
+            except (TypeError, ValueError):
+                continue
+        cells = []
+        for (day, hour), values in buckets.items():
+            online = [item for item in values if item["online"]]
+            with_capacity = [item for item in online if item["players"] is not None and item["max_players"]]
+            cells.append({
+                "weekday": day, "hour": hour, "samples": len(values),
+                "availability": sum(1 for item in with_capacity if item["players"] < item["max_players"]) / max(1, len(values)),
+                "players_low": min((item["players"] for item in online if item["players"] is not None), default=None),
+                "players_high": max((item["players"] for item in online if item["players"] is not None), default=None),
+            })
+        return {"ready": len(rows) >= minimum_samples, "samples": len(rows), "timezone": "UTC", "cells": cells}

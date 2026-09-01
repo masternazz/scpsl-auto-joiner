@@ -5,15 +5,17 @@ release records. Start here when taking over the project.
 
 ## Maintainer path
 
-1. [Handoff guide](handoff.md) — current source of truth, invariants, module map,
+1. [Handoff guide](handoff.md) - current source of truth, invariants, module map,
    and first-session checklist.
-2. [Development guide](development.md) — environment setup, test commands, and
+2. [Development guide](development.md) - environment setup, test commands, and
    local startup.
-3. [Architecture](architecture.md) — runtime layers, data flow, services, and
+3. [Architecture](architecture.md) - runtime layers, data flow, services, and
    persistence boundaries.
-4. [Release process](release-process.md) — versioning, packaging, verification,
+4. [Release process](release-process.md) - versioning, packaging, verification,
    and publishing.
-5. [Private-server acceptance](private-server-acceptance.md) — authorized live
+5. [Product expansion guide](product-expansion.md) - recovery, local organization,
+   alerts, backups, and the owned-server companion.
+6. [Private-server acceptance](private-server-acceptance.md) - authorized live
    validation without using public servers.
 
 ## Product and operations
@@ -28,7 +30,7 @@ release records. Start here when taking over the project.
 
 ## Historical material
 
-Files under [`research/`](research/) and dated release notes document why older
+Files under [research/](research/) and dated release notes document why older
 choices were made. They are useful evidence, but they do not override current
 code, tests, the handoff guide, or the latest release notes.
 

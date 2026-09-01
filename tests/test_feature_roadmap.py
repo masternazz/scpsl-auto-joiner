@@ -7,7 +7,7 @@ def test_store_v2_migrates_profiles_and_group_policies(tmp_path):
     path = tmp_path / "servers.json"
     path.write_text(json.dumps({"version": 1, "servers": [{"id": "s1", "name": "Private", "ip": "localhost", "port": 7777}], "groups": []}))
     store = server_store.load_store(path)
-    assert store["version"] == 2
+    assert store["version"] == 3
     assert store["servers"][0]["monitoring"]["enabled"] is False
     assert store["groups"] == []
 

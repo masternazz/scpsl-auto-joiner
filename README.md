@@ -33,7 +33,11 @@
 
 Watch Mode checks the saved server first. It does not touch SCP:SL until capacity is detected and confirmed. Immediate Auto-Join remains available for the normal retry flow.
 
-## What is new in v0.3.34
+## What is in the v0.3.35 candidate
+
+The public GitHub release remains **v0.3.34**. The items below are in the
+unreleased v0.3.35 candidate and are not available from GitHub releases until
+the private desktop acceptance checks, commit, push, and release are complete.
 
 - **Watch Mode** waits for an available slot before interacting with SCP:SL.
 - **Server history and insights** retain local availability, player-count, and latency observations.
@@ -44,6 +48,9 @@ Watch Mode checks the saved server first. It does not touch SCP:SL until capacit
 - **Calibration profiles** keep separate client-relative targets for different display setups.
 - **Translation packs** support local folders, ZIP files, links, GitHub discovery, backups, and user-requested update checks.
 - **Owned-server companion support** is separate, opt-in, and intended for servers you own or are authorized to manage.
+- **Explain and recover** surfaces the evidence behind a missed join, safe recovery options, and a setup check before retrying.
+- **Private organization** adds local tags, collections, notes, compact/high-contrast/larger-text views, and a local availability heatmap.
+- **Safe backup and slot alerts** add opt-in actionable notifications and previewed, credential-free backup/restore.
 
 ## How it works
 
@@ -150,7 +157,7 @@ py -3.13 -m pytest tests --ignore=tests/test_gui_flow.py -q
 py -3.13 -m pytest tests/test_gui_flow.py -q
 
 # Build a versioned portable ZIP and, when Inno Setup is installed, the setup installer.
-.\build_release.ps1 -Version 0.3.34
+.\build_release.ps1 -Version 0.3.35
 
 # Regenerate the public README visuals with fictional data only.
 py -3.13 assets\brand\render_readme_assets.py

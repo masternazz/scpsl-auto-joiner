@@ -9,7 +9,9 @@ import tempfile
 from urllib.parse import urlparse
 import urllib.request
 
-CURRENT_VERSION = os.environ.get("SCP_SL_APP_VERSION", "0.3.34")
+from version import APP_VERSION
+
+CURRENT_VERSION = os.environ.get("SCP_SL_APP_VERSION", APP_VERSION)
 RELEASES_API = "https://api.github.com/repos/masternazz/scpsl-auto-joiner/releases/latest"
 RELEASES_PAGE = "https://github.com/masternazz/scpsl-auto-joiner/releases"
 

@@ -16,6 +16,35 @@ def test_webui_boot_symbols_use_encoding_safe_markup():
     assert "Ã" not in source
 
 
+def test_product_expansion_panels_render_without_console_errors():
+    errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.on("console", lambda message: errors.append(message.text) if message.type == "error" else None)
+        page.add_init_script("""
+          const server = {id:'s1',name:'Private Test',ip:'127.0.0.1',port:7777,tags:[],notes:'',notification_profile:{}};
+          window.pywebview={api:{
+            get_app_state:async()=>({ok:true,servers:[server],groups:[],settings:{notifications_enabled:true},calibration:{calibrated:false,points:{}},calibration_profiles:{profiles:[],active:null},packs:{packs:[],active_pack:null},theme:{preset:'violet'},storage:{}}),
+            get_join_explanations:async()=>({items:[]}), get_recovery_actions:async()=>({actions:[{id:'diagnostics',label:'Open Diagnostics'}]}),
+            run_setup_check:async()=>({checks:[{id:'query',label:'A2S server query',ok:null,detail:'Choose a server.'}]}), calibration_target_map:async()=>({targets:[]}),
+            save_setting:async(k,v)=>({ok:true,settings:{[k]:v}}), create_backup:async()=>({ok:true}), create_support_bundle:async()=>({ok:true}),
+            save_collection:async()=>({ok:true}), get_servers:async()=>({servers:[server]}), get_calibration_state:async()=>({calibration:{calibrated:false,points:{}}}),
+            get_update_status:async()=>({ok:true,update:null}), set_theme:async p=>({theme:{preset:p}})
+          }};
+        """)
+        page.goto((ROOT / "webui" / "index.html").as_uri())
+        page.wait_for_selector("#whyJoinPanel")
+        page.locator(".nav-item[data-page='diagnostics']").click()
+        page.wait_for_selector("#setupCheckPanel")
+        assert page.locator("#setupServer").count() == 1
+        page.locator(".nav-item[data-page='settings']").click()
+        page.wait_for_selector(".safe-backup-panel")
+        assert page.locator('[data-product-setting="slot_alert_actions"]').count() == 1
+        assert not errors
+        browser.close()
+
+
 @pytest.mark.parametrize("width,height", [(800, 600), (960, 640), (1280, 720), (1920, 1080), (2560, 1440), (3840, 2160)])
 def test_webui_pages_render_without_horizontal_overflow(width, height):
     with sync_playwright() as playwright:

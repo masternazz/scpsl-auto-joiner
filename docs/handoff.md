@@ -10,7 +10,12 @@ that produced it.
 - Explicit legacy fallback: `py -3.13 app_web.py --legacy-ui`
 - Desktop/backend API: `web_api.py`
 - Browser UI: `webui/`
-- Current public release line: `v0.3.34`
+- Current public release line: `v0.3.34`. The `feat/reliability-browser-groups`
+  worktree contains an uncommitted v0.3.35 candidate and the in-progress
+  v0.3.36–v0.3.38 product-expansion work. Do not describe v0.3.35 as
+  published until it has been committed, pushed, and released. See
+  [product-expansion.md](product-expansion.md) and
+  [roadmap-status.md](roadmap-status.md).
 - User data root: `%LOCALAPPDATA%\SCP-SL-Auto-Joiner`
 - Release identity: the Inno Setup `AppId` in `installer.iss`; never change it
   for a normal upgrade.
@@ -105,6 +110,16 @@ server. An authorized maintainer needs a separate private runbook containing:
 Do not copy those values into commits, issues, screenshots, logs, destination
 bundles, or bug reports. The public procedure is in
 [`private-server-acceptance.md`](private-server-acceptance.md).
+
+### Current private-test status
+
+An authorized private server has completed a query-only acceptance check for
+the v0.3.35 candidate. Its A2S status reported an open slot. The companion
+source has also compiled against that server's matching game and LabAPI
+assemblies. These facts do **not** replace the remaining live desktop checks:
+an available-slot GUI join, a controlled full/rejected retry, and companion
+deployment with an owner-configured token. Keep all server identities,
+endpoints, tokens, and management routes out of this file.
 
 ## Feature invariants
 
